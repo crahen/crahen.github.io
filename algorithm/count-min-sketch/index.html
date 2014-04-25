@@ -17,14 +17,16 @@ var sketch = new CMSketch(0.001, 0.99);
 
 var actual = [];
 var estimate = [];
-
-for (var i = 0; i < 1000; i++) {
-  var r = Math.floor(Math.random()*1000);
-  sketch.update(i, r);
+for (var i = 0; i < 100; i++) {
+  var r = Math.floor(Math.random()*10000);
   actual.push({x: i, y: r});
 }
 
-for (var i = 0; i < 1000; i++) {
+for (var i = 0; i < actual.length; i++) {
+  sketch.update(i, r);
+}
+
+for (var i = 0; i < actual.length; i++) {
   estimate.push({x: i, y: sketch.lookup(i)});
 }
 
