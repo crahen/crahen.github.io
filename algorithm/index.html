@@ -1,0 +1,74 @@
+<html>
+<head>
+  <link type="text/css" rel="stylesheet" href="css/rickshaw.css">
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+  <script src="js/jquery-1.11.0.min.js"></script>
+  <script src="js/d3.min.js"></script>
+  <script src="js/rickshaw.js"></script>
+  
+<script>
+function createWidget(id) {
+
+var chart = id + '_chart';
+var legend = id + '_legend';
+
+// Generate a part of divs
+chartDiv = $('<div/>', { id: chart}).appendTo($(id));
+legendDiv = $('<div/>', { id: legend}).appendTo($(id));
+
+var seriesData = [ [], [], [] ];
+var random = new Rickshaw.Fixtures.RandomData(150);
+
+for (var i = 0; i < 500; i++) {
+  random.addData(seriesData);
+}
+
+var graph = new Rickshaw.Graph({
+  element: chartDiv[0],
+  width: 960,
+  height: 500,
+  renderer: 'scatterplot',
+  series: [{
+    name: 'estimate',
+	color: '#6699CC',
+	data: seriesData[0],
+  }, {
+	name: 'actual',
+	color: '#66CC66',
+	data: seriesData[1],
+  }]
+});
+
+graph.renderer.dotSize = 6;
+var hoverDetail = new Rickshaw.Graph.HoverDetail( {
+  graph: graph,
+  xFormatter: function(x) { return x; }
+});
+
+var legendDetail = new Rickshaw.Graph.Legend( {
+  element: legendDiv[0],
+  graph: graph
+});
+
+// Add some relative position adjustments.
+legendDiv.css({
+  top: -1.35*legendDiv.outerHeight() + 'px',
+  left: .25*legendDiv.outerWidth() + 'px'
+});
+
+graph.update();
+
+}
+</script>
+</head>
+<body>
+<div id="chart"></div>
+<div id="chart2"></div>
+<script>
+createWidget('#chart');
+createWidget('#chart2');
+</script>
+</div>
+
+</body>
+</html>
