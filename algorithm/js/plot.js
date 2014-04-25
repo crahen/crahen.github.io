@@ -1,5 +1,5 @@
 // Generate a scatter plot for the given series of datapoints.
-function scatterplot(args) {
+function plot(args) {
   var root = $('<div/>');
   chart = $('<div/>').appendTo(root);
   legend = $('<div/>').appendTo(root);
@@ -7,7 +7,7 @@ function scatterplot(args) {
     element: chart[0],
     width: args.width,
     height: args.height,
-    renderer: 'scatterplot',
+    renderer: args.renderer,
     series: args.series
   });
   graph.renderer.dotSize = 6;

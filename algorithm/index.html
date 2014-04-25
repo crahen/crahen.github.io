@@ -5,7 +5,7 @@
   <script src="js/d3.min.js"></script>
   <script src="js/jquery.min.js"></script>
   <script src="js/rickshaw.min.js"></script>
-  <script src="js/scatterplot.js"></script>
+  <script src="js/plot.js"></script>
   <script src="js/seedrandom.js"></script>
   <script src="js/cmsketch.js"></script>
 </script>
@@ -13,34 +13,38 @@
 <body>
 <script>
 
-var sketch = new CMSketch(0.0001, 0.995);
+var sketch = new CMSketch(0.001, 0.99);
 
 var actual = [];
 var estimate = [];
 
-for (var i = 0; i < 100; i++) {
-  var r = Math.floor(Math.random()*1000000);
+for (var i = 0; i < 1000; i++) {
+  var r = Math.floor(Math.random()*1000);
   sketch.update(i, r);
   actual.push({x: i, y: r});
 }
 
-for (var i = 0; i < 100; i++) {
+for (var i = 0; i < 1000; i++) {
   estimate.push({x: i, y: sketch.lookup(i)});
 }
 
-$('body').append( scatterplot({
-  width: 800,
-  height: 350,
-  series: [{
-    name: 'Estimate',
-	color: '#6699CC',
-	data: estimate,
-  }, {
-	name: 'Actual',
-	color: '#66CC66',
-	data: actual,
-  }]
-}));
+// Generate an element with the graph contents
+$('body').append( 
+  plot({
+    width: 1200,
+    height: 350,
+    renderer: 'line',
+    series: [{
+      name: 'Estimate',
+	    color: '#6699CC',
+    	data: estimate,
+    }, {
+    	name: 'Actual',
+    	color: '#66CC66',
+    	data: actual,
+    }]
+  })
+);
 
 
 </script>
