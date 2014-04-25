@@ -7,30 +7,73 @@
   <script src="js/rickshaw.min.js"></script>
   <script src="js/plot.js"></script>
   <script src="js/seedrandom.js"></script>
+  <script src="js/murmurhash3_gc.js"></script>
   <script src="js/cmsketch.js"></script>
 </script>
 </head>
 <body>
 <script>
 
-var sketch = new CMSketch(0.001, 0.99);
-
+var N = 1000;
+var U = 10000;
 var actual = [];
-var estimate = [];
 for (var i = 0; i < 100; i++) {
-  var r = Math.floor(Math.random()*10000);
+  var r = Math.floor(Math.random()*U);
   actual.push({x: i, y: r});
 }
 
-for (var i = 0; i < actual.length; i++) {
-  sketch.update(i, r);
+
+function addGraph(accuracy, confidence) {
+  
+  var sketch0 = new CMSketch(accuracy, confidence);
+  for (var i = 0; i < actual.length; i++) {
+    sketch0.update(i, actual[i].y);
+  }
+  var estimate0 = [];
+  for (var i = 0; i < actual.length; i++) {
+    estimate0.push({x: i, y: sketch0.lookup(i)});
+  }
+  
+  // Generate an element with the graph contents
+  $('body').append('Accurracy: +-' + U*sketch0.accuracy() + ' per error<br/>');
+  $('body').append('Confidence: ' + 100*sketch0.confidence() + '%<br/>');
+  $('body').append('Space: ' + sketch0.space() + ' bytes<br/>');
+  $('body').append( 
+    plot({
+      width: 1200,
+      height: 350,
+      renderer: 'line',
+      series: [{
+        name: 'Estimate',
+  	    color: '#6699CC',
+      	data: estimate0,
+      }, {
+      	name: 'Actual',
+      	color: '#66CC66',
+      	data: actual,
+      }]
+    })
+  );
+  
 }
 
-for (var i = 0; i < actual.length; i++) {
-  estimate.push({x: i, y: sketch.lookup(i)});
-}
+addGraph(0.1, 0.90);
+addGraph(0.01, 0.90);
+addGraph(0.001, 0.90);
 
+/*
+var sketch1 = new CMSketch(0.001, 0.99);
+for (var i = 0; i < actual.length; i++) {
+  sketch1.update(i, r);
+}
+var estimate1 = [];
+for (var i = 0; i < actual.length; i++) {
+  estimate1.push({x: i, y: sketch1.lookup(i)});
+}
 // Generate an element with the graph contents
+$('body').append('<p>Accurracy: ' + sketch1.accuracy() + '</p>');
+$('body').append('<p>Confidence: ' + sketch1.confidence() + '%</p>');
+$('body').append('<p>Space: ' + sketch1.space() + 'b</p>');
 $('body').append( 
   plot({
     width: 1200,
@@ -39,7 +82,7 @@ $('body').append(
     series: [{
       name: 'Estimate',
 	    color: '#6699CC',
-    	data: estimate,
+    	data: estimate1,
     }, {
     	name: 'Actual',
     	color: '#66CC66',
@@ -47,7 +90,7 @@ $('body').append(
     }]
   })
 );
-
+*/
 
 </script>
 </div>
