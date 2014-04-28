@@ -10,10 +10,13 @@ function plot(args) {
     renderer: args.renderer,
     series: args.series
   });
-  graph.renderer.dotSize = 6;
+  graph.renderer.dotSize = 4;
   new Rickshaw.Graph.HoverDetail( {
     graph: graph,
-    xFormatter: function(x) { return x; }
+    xFormatter: function(x) { 
+      var msg = 'Actual: ' + x;
+      return msg;
+    }
   });
   new Rickshaw.Graph.Legend( {
     element: legend[0],
