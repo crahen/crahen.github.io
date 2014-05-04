@@ -2,8 +2,11 @@
 function CMSketch(accuracy, confidence, seed) {
 
   // Create storage for counts
-  var width = Math.ceil(3 / accuracy);
-  var depth = Math.ceil(-Math.log(1.0 - confidence));
+  var depth = Math.ceil(Math.log(1 / (1.0 - confidence)));
+  var width = Math.ceil(Math.E / accuracy);
+  //depth = Math.ceil(-Math.log(1 - confidence) / Math.log(2));
+  console.log('d:'+depth);
+  console.log('w:'+width);
   var counts = new Array(depth);
   for (var i = 0; i < depth; ++i) {
     counts[i] = new Array(width);
@@ -24,7 +27,7 @@ function CMSketch(accuracy, confidence, seed) {
 
   var hash = function(a, value) {
     // Only really need universal hash functions, pair-wise is extra.
-    var h = murmurhash3_32_gc(value.toString(), seed);
+    var h = murmurhash3_32_gc(value.toString(), a);
     return Math.floor(a*h) % counts[0].length;
   }
 
