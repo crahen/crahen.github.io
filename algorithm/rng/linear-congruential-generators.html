@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="us">
+<head>
+<meta charset="utf-8">
+<title>Psuedo-Random Numbers, Linear Congruential Generators and Patterns</title>
+<link href="../../css/dark-slate/jquery-ui-1.10.4.custom.css" rel="stylesheet">
+<link href="../../css/rickshaw.min.css" rel="stylesheet">
+<script src="../../js/numeric-1.2.6.min.js"></script>
+<script src="../../js/jquery-1.10.2.js"></script>
+<script src="../../js/jquery-ui-1.10.4.custom.js"></script>
+<script src="../../js/d3.min.js"></script>
+<script src="../../js/rickshaw.min.js"></script>
+<!-- 3D Scatter Plots -->
+<script src="../../js/threejs.min.js"></script>
+<script src="../../js/threejs.dex.js"></script>
+<script src="../../js/threejs.ScatterPlot3D.js"></script>
+<script src="../../js/raf.js"></script>
+<script>
+</script>
+<script>
+$(document).ready(function() {
+	
+  $("#body").css( "background", "#232323" );
+
+  // Classic examples
+  function make_lcg(m, a, c, seed) {
+    return function() {
+      var next = (a * seed + c) % m;
+      seed = next;
+      return (next / m);
+    }
+  }
+  var apple = make_lcg(0x800000000,1220703125,0,1); 
+  var randu = make_lcg(0x80000000, 65539, 0, 1);
+
+  // Lower order bit examples
+  function make_lcg_mask(m, a, c, seed, mask) {
+    return function() {
+      var next = (a * seed + c) % m;
+      seed = next;
+      next = next & mask;
+      return (next / m);
+    }
+  }
+  var apple_mask_1 = make_lcg_mask(0x800000000,1220703125,0,1, 0x1FFFFFF); 
+  var apple_mask_2 = make_lcg_mask(0x800000000,1220703125,0,1, 0x7FFFFF); 
+
+  // Example of a full-cycle LCG
+  function make_lcg_raw(m, a, c, seed) {
+    return function() {
+      var next = (a * seed + c) % m;
+      seed = next;
+      return next.toString(2);
+    }
+  }
+  var full_cycle = make_lcg_raw(0x100000000,5,1,(new Date()).getTime());
+
+  var make_data = function(generator, n, maxx, maxy) {
+    // (Rickshaw requires data sorted by X)
+    var sortByX = function(a,b) {
+      if (a.x == b.x) { return 0; }
+      return a.x > b.x ? 1 : -1;
+    };
+    var result = [];
+    var count = 0;
+    while(count < n) {
+      var pt = {x: generator(), y: generator()};
+      if (pt.x <= maxx && pt.y <= maxy) {
+        result.push(pt);
+        result.sort(sortByX);
+        count++;
+      }
+    }
+    return result;
+  }
+
+  // Add APPLE graph
+  var graph = new Rickshaw.Graph({
+    element: document.getElementById("apple"),
+    width: 400,
+    height: 300,
+    renderer: 'scatterplot',
+    series: [
+     { 
+        name: 'APPLE Spectral Plot Range [0, 0.25]',
+        color: '#6699cc',
+        data: make_data(apple, 500, 0.25, 0.25),
+     }
+    ]
+  });
+  new Rickshaw.Graph.Axis.X({
+    graph: graph
+  });
+  new Rickshaw.Graph.Axis.Y({
+    graph: graph
+  });
+  new Rickshaw.Graph.Legend( {
+    graph: graph,
+    element: document.getElementById("apple")
+  });
+  graph.renderer.dotSize = 3;
+  graph.render();
+
+  graph = new Rickshaw.Graph({
+    element: document.getElementById("apple-zoom"),
+    width: 400,
+    height: 300,
+    renderer: 'scatterplot',
+    series: [
+     { 
+        name: 'APPLE Spectral Plot Range [0, 0.025]',
+        color: '#6699cc',
+        data: make_data(apple, 300, 0.025, 0.025),
+     }
+    ]
+  });
+  new Rickshaw.Graph.Axis.X({
+    graph: graph
+  });
+  new Rickshaw.Graph.Axis.Y({
+    graph: graph
+  });
+  new Rickshaw.Graph.Legend( {
+    graph: graph,
+    element: document.getElementById("apple-zoom")
+  });
+  graph.renderer.dotSize = 3;
+  graph.render();
+
+  // Add RANDU graph
+  var data = [];
+  function make_3d_data(lcg, data) {
+    var min = -1000;
+    var max = 1000;
+    for(var i = 0; i < 1000; i++) {
+      pt = []
+      for(var j = 0; j < 3; j++) {
+        var num = min + randu()*(max-min);
+        pt.push(num);
+      }
+      data.push(pt);
+    }
+  }
+  make_3d_data(randu, data);
+  new ScatterPlot3D({
+    parent: document.getElementById('randu-3d'),
+    csv: {
+      header: ['X', 'Y', 'Z'],
+      data: data
+     }, 
+    width: 400, 
+    height: 400,
+  }).render();
+
+
+  graph = new Rickshaw.Graph({
+    element: document.getElementById("apple-low-1"),
+    width: 400,
+    height: 300,
+    renderer: 'scatterplot',
+    series: [
+     { 
+        name: 'APPLE Spectral Plot Range [0, 0.25] Lower 25-bits',
+        color: '#6699cc',
+        data: make_data(apple_mask_1, 300, 0.25, 0.25),
+     }
+    ]
+  });
+  new Rickshaw.Graph.Axis.X({
+    graph: graph
+  });
+  new Rickshaw.Graph.Axis.Y({
+    graph: graph
+  });
+  new Rickshaw.Graph.Legend( {
+    graph: graph,
+    element: document.getElementById("apple-low-1")
+  });
+  graph.renderer.dotSize = 3;
+  graph.render();
+
+
+  graph = new Rickshaw.Graph({
+    element: document.getElementById("apple-low-2"),
+    width: 400,
+    height: 300,
+    renderer: 'scatterplot',
+    series: [
+     { 
+        name: 'APPLE Spectral Plot Range [0, 0.25] Lower 23-bits',
+        color: '#6699cc',
+        data: make_data(apple_mask_2, 300, 0.25, 0.25),
+     }
+    ]
+  });
+  new Rickshaw.Graph.Axis.X({
+    graph: graph
+  });
+  new Rickshaw.Graph.Axis.Y({
+    graph: graph
+  });
+  new Rickshaw.Graph.Legend( {
+    graph: graph,
+    element: document.getElementById("apple-low-2")
+  });
+  graph.renderer.dotSize = 3;
+  graph.render();
+
+  // Generate some samples for the full-cycle example
+  var tbl = $('#full-cycle');
+  for(var i = 0; i < 7; i++) {
+    var h = full_cycle();
+    var t = h.substring(h.length - 1);
+    h = h.substring(0, h.length - 1);
+    tbl.append('<tr><td style="font-size:14pt;">' + h + '&nbsp;<b style="font-weight:bolder;color:yellow;">' + t + '</b></td></tr>');
+  }
+
+});
+</script>
+<script type="x-shader/x-vertex" id="vertexshader">
+uniform float amplitude;
+attribute float size;
+attribute vec3 customColor;
+varying vec3 vColor;
+void main() {
+  vColor = customColor;
+  vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
+  gl_PointSize = size * ( 300.0 / length( mvPosition.xyz ) );
+  gl_Position = projectionMatrix * mvPosition;
+}
+</script>
+<script type="x-shader/x-fragment" id="fragmentshader">
+uniform vec3 color;
+uniform sampler2D texture;
+varying vec3 vColor;
+void main() {
+  gl_FragColor = vec4( color * vColor, 1.0 );
+  gl_FragColor = gl_FragColor * texture2D( texture, gl_PointCoord );
+}
+</script>
+<style>
+.formula {
+    font-size: larger;
+    font-weight: bolder;
+}
+.formula span {
+    color: white;
+} 
+.ui-page { 
+  color: #cccccc;
+  background: #131313;
+}
+#ScatterPlot3D {
+  display:block;
+  float:right;
+}
+body {
+	font: 85% "Trebuchet MS", sans-serif;
+	margin: 75px;
+}
+</style>
+</head>
+<body class="ui-page">
+
+<h1>Linear Congruential Generators</h1>
+<h2>Overview</h2>
+
+A linear congruiential generator, or <i>LCG</i>, is one of the oldest and simplest algorithms we have for generating a series of seemingly unpredictable random numbers. 
+
+<h3>EQUATION</h3>
+LCGs all take the form,<p>
+<div class="formula">
+  X<sub>n+1</sub> = (<i><span>a</span>X</i><sub>n</sub> + <i><span>c</span></i>) mod <i><span>m</span></i>
+</div>
+
+<p>
+Linear is a term to descibe the function as a first-degree polynomial.<br>
+Congruential is term to describe that a modulus is used to bound the output to some domain.<br>
+Generator is a term to decribe the fact to function can be called iteratively.
+
+<h3>EXAMPLE</h3>
+In JavaScript, a random number generator (RNG) that uses the equation above looks like following:
+<pre>
+  // Construct a psuedo-random generator
+  function create_lcg(m, a, c, seed) {
+    return function() {
+      var next = (a * seed + c) % m;
+      seed = next;
+      return (next / m);
+    }
+  }
+</pre>
+
+Using that RNG to build a sequence of random numbers looks like this:
+<pre>
+  // Construct a psuedo-random sequence
+  var rng = create_lcg(0x80000000, 65539, 0, 1);
+  rng() // 1-st number
+  rng() // 2-nd number
+  ...
+  rng() // n-th number
+</pre>
+
+
+<h2>Spectral Testing</h2>
+<h3>APPLE</h3>
+<div class="formula">
+  X<sub>n+1</sub> = (<span>5<sup>13</sup></span><i>X</i><sub>n</sub> + <i><span>0</span></i>) mod <i><span>2<sup>35</sup></span></i>
+</div>
+
+<center>
+<table cellspacing="50">
+<tr>
+<td>
+<div id="apple"></div>
+</td>
+<td>
+<div id="apple-zoom"></div>
+</td>
+</tr>
+</table>
+</center>
+
+<h3>RANDU</h3>
+<div class="formula">
+  X<sub>n+1</sub> = (<span>2<sup>16</sup>+3</span><i>X</i><sub>n</sub> + <i><span>0</span></i>) mod <i><span>2<sup>31</sup></span></i>
+</div>
+<center>
+<table cellspacing="50">
+<tr>
+<td>
+<div id="randu-3d"></div>
+<center><span style="font-size:smaller;"><b>(Grab the cube and rotate it until you see a pattern)</b></span></center>
+</td>
+</tr>
+</table>
+</center>
+
+<h2>Low-Order Bits</h2>
+<h3>APPLE</h3>
+<div class="formula">
+  X<sub>n+1</sub> = (<span>5<sup>13</sup></span><i>X</i><sub>n</sub> + <i><span>0</span></i>) mod <i><span>2<sup>35</sup> </span></i>
+</div>
+<center>
+<table cellspacing="50" cellpadding="5">
+<tr>
+<td>
+<div id="apple-low-1"></div>
+<br>mask = 0x1FFFFFF
+</td>
+<td>
+<div id="apple-low-2"></div>
+<br>mask = 0x7FFFFF
+</td>
+</tr>
+</table>
+</center>
+
+
+VCRT crt\src\rand.c:
+<pre>
+return( ((ptd->_holdrand = ptd->_holdrand * 214013L  2531011L) >> 16) & 0x7fff );
+</pre>
+
+VCRT msvcrt.dll:
+<pre>
+mov     ecx, [eax+14h]
+imul    ecx, 343FDh
+add     ecx, 269EC3h
+mov     [eax+14h], ecx
+mov     eax, ecx
+shr     eax, 10h
+and     eax, 7FFFh
+</pre>
+
+
+<h2>Full Cycle </h2>
+<h3>EXAMPLE</h3>
+<div class="formula">
+  X<sub>n+1</sub> = (<span>5</span><i>X</i><sub>n</sub> + <i><span>1</span></i>) mod <i><span>2<sup>32</sup></span></i>
+</div>
+<p>
+
+<table cellspacing="10">
+<tr><td style="padding-right:50px;">
+<table id="full-cycle" bordercolor="#EEEEEE">
+</table>
+<center><span><b>(32-bit binary values, regenerated each page load)</b></span></center>
+</td><td valign="top">
+<ul>
+  <li></li>
+  <li></li>
+  <li></li>
+</ul>
+
+<a href="http://en.wikipedia.org/wiki/Full_cycle">full cycle</a>
+</td></tr>
+</table>
+
+<pre>
+mov     ecx, [eax+14h]
+imul    ecx, 343FDh
+add     ecx, 269EC3h
+mov     [eax+14h], ecx
+mov     eax, ecx
+shr     eax, 10h
+and     eax, 7FFFh
+</pre>
+
+
+<h2>Period</h2>
+<img src="cards.png">
+
+<h2>Predictability</h2>
+
+<h2>Notes</h2>
+<h3>References</h3>
+<ul>
+  <li><a href="http://random.mat.sbg.ac.at/">http://random.mat.sbg.ac.at/</a></li>
+  <li><a href="http://www.iro.umontreal.ca/~simardr/testu01/tu01.html">http://www.iro.umontreal.ca/~simardr/testu01/tu01.html</a></li>
+  <li><a href="http://en.wikipedia.org/wiki/Full_cycle">Full Cycle</a></li>
+  <li><a href="http://www.cigital.com/papers/download/developer_gambling.php">http://www.cigital.com/papers/download/developer_gambling.php</a></li>
+</ul>
+
+<h3>Author</h3>
+Eric Crahen
+
+</body>
+</html>
