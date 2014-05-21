@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="us">
+<head>
+	<meta charset="utf-8">
+	<title>Under The Hood: Count-Min Sketching, Configuration &amp; Point-Queries</title>
+	<link href="../../css/dark-slate/jquery-ui-1.10.4.custom.css" rel="stylesheet">
+	<link href="../../css/rickshaw.min.css" rel="stylesheet">
+	<script src="../../js/jquery-1.10.2.js"></script>
+	<script src="../../js/jquery-ui-1.10.4.custom.js"></script>
+	<script src="../../js/d3.min.js"></script>
+	<script src="../../js/rickshaw.min.js"></script>
+	<script src="../../js/murmurhash3_gc.js"></script>
+	<script src="../../js/seedrandom.js"></script>
+	<script src="js/cmsketch.js"></script>
+	<script>
+	$(document).ready(function() {
+		
+    $("#body").css( "background", "#232323" );
+
+    // Sorter (Rickshaw requires this)
+    var sortByX = function(a,b) {
+      if (a.x == b.x) { return 0; }
+      return a.x > b.x ? 1 : -1;
+    };
+
+    // Plot Factory
+    var createScatterPlot = function(plot, id) {
+      var controls = [
+        { name: 'Accuracy', min: 0, max: 50, scale: 1000, val: plot['accuracy'] || 0.001 }, 
+        { name: 'Confidence', min: 0, max: 1000, scale: 1000, val: plot['confidence'] || 0.99 }, 
+        { name: 'Seed', min: 0, max: 10000, scale: 1, val: Math.floor(Math.random() * (1000)) }, 
+        { name: 'Cardinality', min: 0, max: 2000000, scale: 1, val: 1000000 }, 
+        { name: 'Volume', min: 0, max: 50000, scale: 1, val: 4000 },
+      ];
+      var outter = $('<div style="float:left;"/>').appendTo($(id));
+      $('<span>Properties:</span><p>').appendTo(outter);
+      var cnt = $('<div class="ui-widget-content"/>').appendTo(outter);
+      var tbl = $('<table width="200"/>').appendTo(cnt);
+      var inp = [];
+      var sld = [];
+      plot['name'] = id.substring(1);
+      var row = $('<tr text-align="left"/>').appendTo(tbl);
+      $('<td nowrap>Success (rate)</td><td>').appendTo(row);
+      var success = $('<input size="8" id="' + plot['name'] + '-success" disabled/></td>').appendTo(row);
+      row = $('<tr/>').appendTo(tbl);
+      $('<td nowrap>Population (count)</td><td>').appendTo(row);
+      var population = $('<input size="8" id="' + plot['name'] + '-population" disabled/></td>').appendTo(row);
+      row = $('<tr/>').appendTo(tbl);
+      $('<td nowrap>Storage Used (Kb)</td><td>').appendTo(row);
+      var space = $('<input size="8" id="' + plot['name'] + '-space" disabled/></td>').appendTo(row);
+      row = $('<tr/>').appendTo(tbl);
+      $('<td nowrap>Storage Saved (Kb)</td><td>').appendTo(row);
+      var savings = $('<input size="8" id="' + plot['name'] + '-saturates" disabled/></td>').appendTo(row);
+      row = $('<tr/>').appendTo(tbl);
+      $('<td nowrap>Storage Depth</td><td>').appendTo(row);
+      var depth = $('<input size="8" id="' + plot['name'] + '-depth" disabled/></td>').appendTo(row);
+      row = $('<tr/>').appendTo(tbl);
+      $('<td nowrap>Storage Width</td><td>').appendTo(row);
+      var width = $('<input size="8" id="' + plot['name'] + '-width" disabled/></td>').appendTo(row);
+      $('<p><span>Options:</span><p>').appendTo(outter);
+      cnt = $('<div class="ui-widget-content"/>').appendTo(outter);
+      tbl = $('<table width="200"/>').appendTo(cnt);
+      for(var i in controls) {
+        $(function() {
+          var x = i;
+          var name = controls[x].name.toLowerCase();
+          var pfx = plot['name'] + '-' + name;
+          var row = $('<tr/>').appendTo(tbl);
+          $('<span>' + controls[x].name + '</span>').appendTo($('<td/>').appendTo(row));
+          inp.push($('<input size="8" id="' + pfx + '-input"/>').appendTo($('<td/>').appendTo(row)));
+          sld.push($('<div id="' + pfx + '-slider"/>').appendTo($('<td/>').appendTo(row)));
+          sld[x].slider({
+            range: false,
+            min: controls[x].min,
+            max: controls[x].max,
+            value: 0,
+            slide: function(event, ui) {
+              var val = (ui.value / controls[x].scale);
+              inp[x].val(val);
+              plot[name] = val;
+              plot['reset']();
+            }
+          });
+          inp[x].change(function() {
+            var val = $(this).val() * controls[x].scale;
+            sld[x].slider("value", val);
+            plot[name] = $(this).val();
+            plot['reset']();
+          });
+          inp[x].val(controls[x].val);
+          sld[x].slider("value", controls[x].val * controls[x].scale);
+          plot[name] = controls[x].val;
+        }());
+      }
+      row = $('<tr/>').appendTo(tbl);
+      $('<td><span>Reset </span></td><td>').appendTo(row);
+      var reset = $('<button type="button" id="' + plot['name'] + '-reset">RESET</button></td>').appendTo(row);
+      plot['reset'] = function() {
+        plot['data'] = [];
+        plot['estimate'] = [];
+        plot['series'][0]['data'] = [];
+        plot['series'][1]['data'] = [];
+        plot['population'] = 0;
+        plot['success'] = 0;
+        plot['sketch'] = new CMSketch(plot['accuracy'], plot['confidence'], plot['seed']);
+        plot['space'] = plot['sketch'].space();
+        plot['depth'] = plot['sketch'].depth();
+        plot['width'] = plot['sketch'].width();
+        space.val(plot['space'] / 1024);
+        depth.val(plot['depth']);
+        width.val(plot['width']);
+        savings.val('');
+        plot['savings'] = null;
+        animate(plot, 10000);
+      }
+      reset.click(plot['reset']);
+      var widget = $('<div style="float:left; padding:5px;"/>').appendTo(id);
+      plot['graph'] = new Rickshaw.Graph({
+        element: $(widget).get(0),
+        width: 500,
+        height: 400,
+        renderer: 'scatterplot',
+        series: plot['series']
+      });
+      plot['graph'].renderer.dotSize = 6;
+      plot['graph'].render();
+      new Rickshaw.Graph.Axis.Y( {
+        graph: plot['graph'],
+        tickValues: [0, plot['cardinality']/2, plot['cardinality']],
+        tickFormat: function(x) {
+          if (x == plot['cardinality']/2) {
+             return 'f \' (x): estimate';
+          }
+          return x; 
+        }
+      });
+      new Rickshaw.Graph.Axis.X( {
+        graph: plot['graph'],
+        tickValues: [0, plot['cardinality']/2, plot['cardinality']],
+        tickFormat: function(x) {
+          if (x == plot['cardinality']/2) {
+             return 'f (x): truth';
+          }
+          return x; 
+        }
+      });
+      new Rickshaw.Graph.Legend( {
+        graph: plot['graph'],
+        element: $(id).get(0),
+      });
+      plot['name'] = name;
+      // Allow visualization to update success and population.
+      plot.update = function(n, suc, pop) {
+        savings.val(((8 * plot['cardinality']) - plot['space'])/  1024);
+        success.val(suc);
+        population.val(pop);
+        plot['graph'].update();
+        if (suc < plot['confidence']) {
+          success.css('color', 'red');
+          success.css('font-weight', 'boldest');
+        } else {
+          success.css('color', 'green');
+          success.css('font-weight', 'normal');
+        }
+      };
+      // Create Sketch
+      plot['reset']();
+      return plot;
+    };
+
+    // Animate 
+    var animate = function(plot, delay, step, n) {
+    // Reset whenever animate gets explicitly called.
+      if ('undefined' == typeof(n)) {
+        clearTimeout(plot['timeout']);
+        n = 0;
+        // Limit the complexity of the actual visualization
+        step = Math.ceil(plot['volume'] / 250);
+      }
+      if (n > plot['volume']) {
+        return;
+      }
+      for(var start = n; n < start + step; n = n + 1) {
+        // Generate new actual and estimate values
+        var key = 'k' + n;
+        var val = (n+1)*n;
+        var est = plot['sketch'].update(key, val);
+        plot['data'].push(val);
+        plot['estimate'].push(est);
+        if (plot['data'].length > plot['volume']) {
+          plot['data'].shift();
+          plot['estimate'].shift();
+        }
+        // Update the state
+        plot['series'][0]['data'] = [];
+        plot['series'][1]['data'] = [];
+        var errors = 0;
+        for (var i = 0; i < n; i++) {
+          // Look at all of the data to determine the actual error, but only draw
+          // one step'th the datapoints to keep the svg simple.
+          var pt = {x: plot['data'][i], y: plot['estimate'][i]};
+          if (typeof(pt.x) == 'undefined' || typeof(pt.y) == 'undefined') { continue; }
+          if(pt.y > (pt.x + plot['accuracy']*pt.x)) {
+            errors += 1;
+          }
+          if(pt.y <= (pt.x + plot['accuracy']*pt.x)) {
+            if (i % step == 0) { plot['series'][0]['data'].push(pt); }
+          } else {
+            if (i % step == 0) { plot['series'][1]['data'].push(pt); }
+          }
+        }
+      }
+      plot['series'][0]['data'].sort(sortByX);
+      plot['series'][1]['data'].sort(sortByX);
+      // Update the output variables
+      plot['population'] = n;
+      plot['success'] = 1;
+      if (errors > 0) {
+        plot['success'] = 1 - (errors / n);
+      }
+      // Update the visualization
+      plot.update(n, plot['success'], plot['population']);
+      plot['timeout'] = setTimeout(function() {
+        animate(plot, delay, step, n);
+      }, step / delay);
+    };
+
+    // Configure Plot
+    var plot = createScatterPlot({
+      data: [],
+      estimate: [],
+      series: [
+        { 
+          name: 'Estimate Within Accuracy Range of True Value',
+          color: '#6699cc',
+          data: [],
+        }, {
+          name: 'Estimate Outside Accuracy Range of True Value',
+          color: '#ff2233',
+          data: [],
+        }
+      ]
+    }, '#chart');
+
+
+	});
+	</script>
+  <style>
+  .ui-page { 
+    color: #cccccc;
+    background: #131313;
+  }
+	body {
+		font: 85% "Trebuchet MS", sans-serif;
+		margin: 75px;
+	}
+	</style>
+</head>
+<body class="ui-page">
+<div align="right">
+<h1>Under The Hood: Count-Min Sketching, Configuration &amp; Point-Queries</h1>
+A probablistic counting algorithm, implementation, configuration, and application notes.
+<p>
+<br>
+</div>
+<h1>Introduction</h1>
+Sketching algorithms like this one are the heart of many stream processing applications for good reason. Sketches can produce estimates of configurable quality, require requires sub-linear space and often do not need to store identifiers. This makes them an attractive option for counting
+a large number of distinct items with relatively little space. 
+<p>
+The <em>Count-Min Sketch</em> is a probablistic sketching algorithm that is simple to implement and can be used to estimate occurrences of distinct items. This article will give you a hands-on walk through of how this works in a live demo, and explaination of how to configure your own sketch.
+<p>
+<h2>Sketches</h2>
+A sketch of a matrix A is another matrix B which is signiﬁcantly smaller than A, but still approximates it well.
+
+<p>
+<h2>Theory</h2>
+This section outlines brief summary of the important properties of this sketch. I'll try to provide an explaination of what these properties mean without getting bogged down in mathematical proofs so that you&apos;ll be able to reason about sketch behavior and configuration.
+<p>
+The theory behind this particular stream summary was first described by Graham Cormode in <a href="http://dimacs.rutgers.edu/~graham/pubs/papers/cmencyc.pdf">"Count-Min Sketch"</a>.
+<h3>Model</h3>
+A few simple equations are used to model this sketch:
+<ul style="list-style: none;">
+  <li>U: a (possibly large) universe of possibilities</li>
+  <li>x: <em>x</em> &isin; U, set x selected from universe of U</li>
+  <li>&#948;:  error probability (delta)</li>
+  <li>&#949;:  error factor (epsilon)</li>
+  <li>f<sub>(x)</sub>:  true number of occurrences of <em>x</em></li>
+</ul>
+The sketch can be defined as:
+<ul style="list-style: none;">
+  <li>f &apos;<sub>(x)</sub>:  estimated number of occurrences of <em>x</em></li>
+</ul>
+<h3>Guarantee</h3>
+Cormode proved the sketch provides the guarantee that with probability 1 - &#948;:
+<ul style="list-style: none;">
+  <li>f<sub>(x)</sub> &lt;= f &apos;<sub>(x)</sub></li>
+  <li>truth &lt;= estimate</li>
+</ul>
+This means that the sketch never under-estimates the true value, though it may over-estimate.
+<p>
+
+Cormode also proved the sketch provides the guarantee that with probability 1 - &#948;:
+<ul style="list-style: none;">
+  <li>&#8741;f&#8741; = &#931;<sub>x &isin; U</sub> f<sub>(x)</sub></li>
+  <li>f &apos;<sub>(x)</sub> &lt;= f<sub>(x)</sub> + &#949;&#8741;f&#8741;</li>
+  <li>estimate &lt;= truth + error</li>
+</ul>
+This means that amount of error in the estimate is proportional to the total aggregate number of occurences seen, and to the accuracy. This also means significantly larger truth values can dwarf smaller the error term producing more accurate estimates for items with the largest counts.
+<p>
+Finally, the theory provides a few formulas for determining the dimensions of the array used to store estimates.
+<ul style="list-style: none;">
+  <li>width: &lceil;e / &#949;&rceil;</li>
+  <li>depth: &lceil;ln 1 / &#948;&rceil;</li>
+</ul>
+<p>
+<h2>Implementation</h2>
+This section provides a short description of the algorithm and illustrations of operations on the underlying data structures.
+Given a configuration:
+<ul style="list-style: none;">
+  <li>&#948;:  error probability (delta)</li>
+  <li>&#949;:  error factor (epsilon)</li>
+</ul>
+<h3>Setup</h3>
+This requires O((1 / &#949;) * ln(1 / &#948;)) space.
+<ol>
+  <li style="margin-top:15px;margin-right:150px;">Create an array with the width and depth, given above, initialize to zero. </li>
+  <li style="margin-top:15px;margin-right:150px;">Create a set of size <em>depth</em> universal hash functions, { h<sub>1</sub> ... h<sub>d</sub> ... h<sub>depth</sub> }.</li>
+</ol>
+
+<h3>Increment</h3>
+This requires O(ln(1 / &#948;)) time. For each level of depth, <em>d</em> in [0, <em>depth</em>):
+<ol>
+  <li style="margin-top:15px;margin-right:150px;">Apply the hash <b>h<sub>d</sub></b> to the value of <em>x</em>, modding it with the <em>width</em> to generate a column number. col = <b>h<sub>d</sub></b>(<em>x</em>) % <em>width</em></li>
+  <li style="margin-top:15px;margin-right:150px;">Increment the count, storage[<em>d</em>, <em>col</em>]++</li>
+</ol>
+
+Below is an illustration of the hash functions on the leftmost diagram, and on the rest, sketch increments at increasing levels of depth (from left to right):
+<p>
+<center>
+<table cellpadding="10">
+<tr>
+  <td><img src="images/count-min-sketch-hash-0.png"/></td>
+  <td><img src="images/count-min-sketch-update-0.png"/></td>
+  <td><img src="images/count-min-sketch-update-1.png"/></td>
+  <td>. . .</td>
+  <td><img src="images/count-min-sketch-update-n.png"/></td>
+</tr>
+</table>
+</center>
+
+<h2>Collisions And Epsilon</h2>
+Collisions are one source of error in the estimates a sketch can produce.
+Below is an illustration, a hash function is selected on the left and a collision occurs during an update on the right. The net result is that the estimate contains counts that are higher than the true value.
+<p>
+<center>
+<table cellpadding="10">
+<tr>
+  <td><img src="images/count-min-sketch-hash-0.png"/></td>
+  <td><img src="images/count-min-sketch-collision-0.png"/></td>
+  <td><img src="images/count-min-sketch-collision-1.png"/></td>
+  <td>. . .</td>
+  <td><img src="images/count-min-sketch-collision-n.png"/></td>
+</tr>
+</table>
+</center>
+<h3>Modeling Error Impact</h3>
+<table cellpadding="0" cellspacing="0">
+<tr><td valign="top">
+Intuitively, it's easy to understand how collisions result in a value higher than the actual value. You can see this in the illustration above in cells containing a +2. The notion of over-counting is also reflected in the model:
+<ul style="list-style: none;">
+  <li>f<sub>(x)</sub> &lt;= f &apos;<sub>(x)</sub></li>
+</ul>
+Intuitively, it's easy to imagine how counting one more item to the example could result in more collisions, creating more overcounting, creating more +2s, and even some +3s, when no item ever appeared more than once. The notion that adding things to the sketch can increase the amount of error in any single estimate can be seen in the model, too:
+<ul style="list-style: none;">
+  <li>f &apos;<sub>(x)</sub> &lt;= f<sub>(x)</sub> + &#949;&#8741;f&#8741;</li>
+</ul>
+The value of &#8741;f&#8741; is calculated by summing all of the counts together, adding more data naturally makes &#8741;f&#8741; bigger, increasing the error term, &#949;&#8741;f&#8741;.
+</td><td><img style="margin:0px 25px;" src="images/count-min-sketch-collision-max.png"/><center>More Collisions</center></td></tr>
+</table>
+<br>
+
+
+<table>
+  <td><img  style="margin:0px 25px;" src="images/count-min-sketch-collision-min.png"/><center>Wider Sketch - Fewer Collisions</center></td>
+<td valign="top"><h3>Configuring Epsilon</h3>
+One strategy for reducing the amount of over-estimation is to hash into more buckets. The theory gives us a formula to describe the number of buckets used:
+<ul style="list-style: none;">
+  <li>width: &lceil;e / &#949;&rceil;</li>
+</ul>
+The value of &#949; is inversely proportional to the width of the sketch, so choosing a smaller &#949; would result in a <em>wider</em> sketch.
+<ul style="list-style: none;">
+  <li>f &apos;<sub>(x)</sub> &lt;= f<sub>(x)</sub> + &#949;&#8741;f&#8741;</li>
+</ul>
+The error term for the estimate depends on &#949;, and is directly proportional to the amount of error in the estimate. Choosing a smaller &#949; would help reduce the over all error term, &#949;&#8741;f&#8741;.
+<p>
+The fact that more buckets requires more space is reflected in the O((1 / ε) factor of the space requirements.
+</td></tr>
+</table>
+
+<h2>Probability And Delta</h2>
+<h3>Modeling Error Rate</h3>
+<table>
+  <tr><td>
+      At a high level this algorithm involves fitting <em>n</em> items into <em>m</em> buckets. The expected probablity of error would be number of items (n) / number of buckets (m)</em>:
+<ul style="list-style: none;">
+  <li>Pr(collision) = n / m (simple hashing)</li>
+</ul>
+<ul style="list-style: none;">
+  <li>Pr(collision) <= 1 / n (pairwise independent hashing)</li>
+</ul>
+
+With a single hashing function, Pr(collision) can rise dramatically with large values of <em>n</em>. Universal hashing is a technique for maintaining lower Pr(collision) by randomly selecting a set of hash functions:
+<ul style="list-style: none;">
+  <li>Pr(collision) <= 1 / m (universal hashing)</li>
+</uL>
+
+  <td><img  style="margin:0px 25px;" src="images/count-min-sketch-probability-0.png"/><center>width = single trial</center></td>
+</td></tr>
+</table>
+
+<table>
+  <tr><td><img  style="margin:0px 25px;" src="images/count-min-sketch-probability-1.png"/><center>depth = # of indepedent trials</center></td>
+  <td>
+<h3>Configuring Delta</h3>
+Choosing a value of &#948; allows you to select a desired probability of error, Pr(desired). Pr(collision) is a function of the <em>width</em> of each row in the array, and may be a different and smaller than your Pr(desired) since width is chosen with different considerations.
+<ul style="list-style: none;">
+  <li>&#948; = Pr(desired)</li>
+  <li>&#948; = Pr(desired) >= Pr(collision)</li>
+</ul>
+The familiy of universal hashes is also a familiy of independent hashes. This means that we can combine results from different independent trials. Each independent trial becomes a level of depth in the array.
+<ul style="list-style: none;">
+  <li>&#948; = Pr(desired) <= depth * Pr(collision)</li>
+</ul> 
+Trials are repeated until enough are completed to achieve the Pr(desired), this is why the main loop in the algorithm is revolves around the <em>depth</em> of this array.
+<p>
+</td></tr>
+</table>
+
+
+<h2>Querying a Sketch</h2>
+<h3>Point-Query</h3>
+Looking up the value of a counter in the sketch is a type of query called a point-query. This proceedure is very similar to the increment proceedure and also requires O(ln(1 / &#948;)) time.
+<p>Set your initial result to <em>&infin;</em>, then for each level of depth, <em>d</em> in [0, <em>depth</em>):
+<ol>
+<li style="margin-top:15px;margin-right:150px;">Apply the hash <b>h<sub>d</sub></b> to the value of <em>x</em>, modding it with the <em>width</em> to generate a column number. col = <b>h<sub>d</sub></b>(<em>x</em>) % <em>width</em>.</li>
+<li style="margin-top:15px;margin-right:150px;">Keep the minimum, result =  min(<em>result</em>, storage[d][col]).</li>
+</ol>
+
+
+
+<p>
+<br>
+
+<h2>Configuration</h2>
+When choosing a configuration, you are often trying to minimize the error term, &#949;&#8741;f&#8741;, of the estimate:
+<ul style="list-style: none;">
+<li style="margin-top:15px;margin-right:150px;"><b>Epsilon:</b> Acceptable errors in estimation fall within a range which is a factor of &#949;. Smaller values of &#949; should produce sketch configurations that provide estimates closer to the true values. However, this will increase the space required by the sketch.</li>
+<li style="margin-top:15px;margin-right:150px;"><b>Volume:</b> Error in estimation is also proportional to the total number of distinct items counted. A factor in the error term, &#8741;f&#8741;,  is a summation of total number of occurences of each distinct item. Another way to reduce the error term is to reduce &#8741;f&#8741; by counting fewer things.</li>
+</ul>
+Alternatively, you can try to reduce the frequency error and increase the chance of success, (1 - &#948;). You may trade some level of error rate in the estimate for a savings in space:
+<ul style="list-style: none;">
+<li style="margin-top:15px;margin-right:150px;"><b>Confidence:</b> The theory states that errors in estimation occur with probability of delta (<em>&#948;</em>). This makes the probability of success (<em>1.0 - &#948;</em>). Increasing this number can produce sketch configurations with reduced error rates, but that will require more memory.</li>
+</ul>
+Universal hashes?
+<ul style="list-style: none;">
+<li style="margin-top:15px;margin-right:150px;"><b>Seed:</b> The seed parameter controls the distribution of universal hash functions that are used by the sketch.</li>
+</ul>
+A good rule of thumb for finding a starting configuration is to try an accuracy with as many significant digits as you have digits in your expected volume (e.g. given an expected volume of 5000 a good starting point for accuracy might be .0001).
+<p>
+<br>
+<h1>Demonstration</h1>
+The following demonstration allows you to visualize how the estimated and true values produced by these functions relate to one another. In this scenario, a set of random counts are generated and assigned to each key in a set of keys. Points are colored red to show when they are outside a factor of <em>accuracy</em> of the true value. For reference, a perfect estimate would look like a diagonal line, from the bottom left to the top right and would contain no red.
+<p>
+<h2>Observe</h2>
+
+<ul style="list-style: none;">
+<li style="margin-top:15px;margin-right:150px;"><b>Accuracy:</b> Trading space for an error factor is what selecting an accuray allows for control over. Try changing the accuracy and notice the impact on the storage width.</li>
+
+<li style="margin-top:15px;margin-right:150px;"><b>Confidence:</b> Trading space for an error rate is what selecting n confidence allows for control over. Try changing the confidence and notice the impact on the storage depth.</li>
+
+<li style="margin-top:15px;margin-right:150px;"><b>Cardinality:</b> Counting with limited space is the primitive this stream summary ultimately provides. Configuring the cardinality allows for control over the potential space savings. Try changing the cardinality and notice the impact on the space savings over keeping a counter for every possible item.</li>
+
+<li style="margin-top:15px;margin-right:150px;"><b>Volume:</b> The error term in our estimate is proportional to the volume, or number of things counted. Try increasing the volume and notice the impact on the distribution of error.</li>
+
+<li style="margin-top:15px;margin-right:150px;"><b>Seed:</b> Try changing the seed and see if you notice any impact, you should see different distributions generate that follow the same general trends.</li>
+</ul>
+<p>
+<br>
+  <center>
+    <h3>Truth vs. Estimate</h3>
+    <div id="chart" class="ui-widget"/>
+  </center>
+  <center>
+  <a href="js/cmsketch.js"><h3>Source Code: cmsketch.js</h3></a>
+ </center>
+
+<p>
+
+<h2>Implementation</h2>
+<h3>Space</h3>
+The width and depth of the array used to store the occurence estimates is given by:
+<ul style="list-style: none;">
+</ul>
+<ul style="list-style: none;">
+  <li>space = O((1 / &#949;) * ln(1 / &#948;))</li>
+</ul>
+<p>
+Generally speaking, arrays will be wider than they are deep in most practical configurations (e.g. accuracy = 0.0001, confidence = 0.95 :: width = 27183, depth = 3).
+<p>
+<br>
+
+<h3>Time</h3>
+During reads and writes, the depth of the array dictates the number of hashes that are ultimately performed.  
+<ul style="list-style: none;">
+<li>O(ln(1 / &#948;)): Time Needed</li>
+</ul>
+<br>
+
+<p>
+<p>
+<h2>References</h2>
+<ol>
+<li><a href="dimacs.rutgers.edu/~graham/pubs/papers/cm-full.pdf">"G. Cormode and S. Muthukrisnan, An improved data stream summary: the count-min sketch and its applications", Journal of Algorithms, 2005, pp. 58-75.</a></li>
+<li><a href="http://www.cs.yale.edu/homes/el327/papers/simpleMatrixSketching.pdf">"Simple and Deterministic Matrix Sketching", E. Liberty.</a></li>
+<li><a href="http://www.youtube.com/watch?v=947gWqwkhu0"><h3>Google Tech Talk: The Bloom Filter</h3></a></li>
+<li><a href="js/cmsketch.js"><h3>JavaScript Implementation: cmsketch.js</h3></a></li>
+</ol>
+
+
+
+<h2>Author</h2>
+Eric Crahen
+<p>
+</body>
+</html>

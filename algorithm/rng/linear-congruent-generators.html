@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="us">
+<head>
+<meta charset="utf-8">
+<title>Psuedo-Random Numbers, Linear Congruential Generators and Patterns</title>
+<link href="../../css/dark-slate/jquery-ui-1.10.4.custom.css" rel="stylesheet">
+<link href="../../css/rickshaw.min.css" rel="stylesheet">
+<script src="../../js/jquery-1.10.2.js"></script>
+<script src="../../js/jquery-ui-1.10.4.custom.js"></script>
+<script src="../../js/d3.min.js"></script>
+<script src="../../js/rickshaw.min.js"></script>
+<script src="../../js/threejs.min.js"></script>
+<script src="../../js/threejs.dex.js"></script>
+<script src="../../js/threejs.ScatterPlot3D.js"></script>
+<script src="http://dexvis.com/three/latest/build/raf.js"></script>
+<script>
+</script>
+<script>
+$(document).ready(function() {
+	
+  $("#body").css( "background", "#232323" );
+
+  function make_lcg(m, a, c, seed) {
+    return function() {
+      var next = (a * seed + c) % m;
+      seed = next;
+      return next / m;
+    }
+  }
+  var randu = make_lcg(0x80000000, 65539, 0, 1);
+  var minstd = make_lcg(0x7FFFFFFF,16807,0,1);
+  var ansic = make_lcg(2147483648,1103515245,12345,12345); 
+  var apple = make_lcg(0x800000000,1220703125,0,1); 
+
+  var make_data = function(generator, n, maxx, maxy) {
+    // Sorter (Rickshaw requires this)
+    var sortByX = function(a,b) {
+      if (a.x == b.x) { return 0; }
+      return a.x > b.x ? 1 : -1;
+    };
+    var result = [];
+    var count = 0;
+    while(count < n) {
+      var pt = {x: generator(), y: generator()};
+      if (pt.x <= maxx && pt.y <= maxy) {
+        result.push(pt);
+        result.sort(sortByX);
+        count++;
+      }
+    }
+    return result;
+  }
+
+  // Add APPLE graph
+  var graph = new Rickshaw.Graph({
+    element: document.getElementById("apple"),
+    width: 400,
+    height: 300,
+    renderer: 'scatterplot',
+    series: [
+     { 
+        name: 'APPLE Spectral Plot Range [0, 1.0]',
+        color: '#6699cc',
+        data: make_data(apple, 500, 1.0, 1.0),
+     }
+    ]
+  });
+  new Rickshaw.Graph.Axis.X({
+    graph: graph
+  });
+  new Rickshaw.Graph.Axis.Y({
+    graph: graph
+  });
+  new Rickshaw.Graph.Legend( {
+    graph: graph,
+    element: document.getElementById("apple")
+  });
+  graph.renderer.dotSize = 3;
+  graph.render();
+
+  graph = new Rickshaw.Graph({
+    element: document.getElementById("apple-zoom"),
+    width: 400,
+    height: 300,
+    renderer: 'scatterplot',
+    series: [
+     { 
+        name: 'APPLE Spectral Plot Range [0, 0.0015]',
+        color: '#6699cc',
+        data: make_data(apple, 300, 0.025, 0.025),
+     }
+    ]
+  });
+  new Rickshaw.Graph.Axis.X({
+    graph: graph
+  });
+  new Rickshaw.Graph.Axis.Y({
+    graph: graph
+  });
+  new Rickshaw.Graph.Legend( {
+    graph: graph,
+    element: document.getElementById("apple-zoom")
+  });
+  graph.renderer.dotSize = 3;
+  graph.render();
+
+  // Add RANDU graph
+  var data = [];
+  function make_3d_data(lcg, data) {
+    var min = -1000;
+    var max = 1000;
+    for(var i = 0; i < 1000; i++) {
+      pt = []
+      for(var j = 0; j < 3; j++) {
+        var num = min + randu()*(max-min);
+        pt.push(num);
+      }
+      data.push(pt);
+    }
+  }
+  make_3d_data(randu, data);
+  new ScatterPlot3D({
+    parent: document.getElementById('randu-3d'),
+    csv: {
+      header: ['X', 'Y', 'Z'],
+      data: data
+     }, 
+    width: 400, 
+    height: 400,
+  }).render();
+
+
+});
+</script>
+<script type="x-shader/x-vertex" id="vertexshader">
+uniform float amplitude;
+attribute float size;
+attribute vec3 customColor;
+varying vec3 vColor;
+void main() {
+  vColor = customColor;
+  vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
+  gl_PointSize = size * ( 300.0 / length( mvPosition.xyz ) );
+  gl_Position = projectionMatrix * mvPosition;
+}
+</script>
+<script type="x-shader/x-fragment" id="fragmentshader">
+uniform vec3 color;
+uniform sampler2D texture;
+varying vec3 vColor;
+void main() {
+  gl_FragColor = vec4( color * vColor, 1.0 );
+  gl_FragColor = gl_FragColor * texture2D( texture, gl_PointCoord );
+}
+</script>
+<style>
+.ui-page { 
+  color: #cccccc;
+  background: #131313;
+}
+#ScatterPlot3D {
+  display:block;
+  float:right;
+}
+body {
+	font: 85% "Trebuchet MS", sans-serif;
+	margin: 75px;
+}
+</style>
+</head>
+<body class="ui-page">
+
+<h2>Linear Congruential Generators</h2>
+<h3>Description</h3>
+
+A linear congruiential generator, or <i>LCG</i>, is one of the oldest and simplest algorithms we have for generating a series of seemingly unpredictable random numbers.
+
+It has the form,<p>
+
+X<sub>n+1</sub> = (<i>aX</i><sub>n</sub> + <i>c</i>) mod <i>m</i>
+<p>
+<ul>
+  <li>The <i>period</i> is the length of the sequence before the sequence begins to repeats.</li>
+  <li>The maximum <i>period</i> is <i>m</i></li>
+</ul>
+
+<i>m</i> is the maximum length of the sequence before things begin to repeat. Linear is a term to descibe the function as a first-degree polynomial. Congruential is term to describe that a modulus is used to bound the output to some domain. Generator is a term to decribe the fact to function can be called iteratively.
+
+<h2>Examples</h2>
+<h3>APPLE</h3>
+<center>
+<table cellspacing="50">
+<tr>
+<td>
+<div id="apple">
+</div>
+</td>
+<td>
+<div id="apple-zoom">
+</div>
+</td>
+</tr>
+</table>
+</center>
+
+<h3>RANDU</h3>
+<center>
+<table cellspacing="50">
+<tr>
+<td>
+<div id="randu-3d">
+</div>
+</td>
+</tr>
+</table>
+</center>
+
+<h2>References</h2>
+<ul>
+  <li><a href="http://random.mat.sbg.ac.at/">http://random.mat.sbg.ac.at/</a></li>
+  <li><a href="http://www.cigital.com/papers/download/developer_gambling.php">http://www.cigital.com/papers/download/developer_gambling.php</a></li>
+</ul>
+
+</body>
+</html>

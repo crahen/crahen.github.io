@@ -1,0 +1,100 @@
+<html>
+<head>
+
+<script src="../../js/d3.min.js"></script>
+<script src="../../js/threejs.min.js"></script>
+<script src="../../js/threejs.dex.js"></script>
+<script src="../../js/threejs.ScatterPlot3D.js"></script>
+
+<style type="text/css">
+body {
+  margin: 0px;
+  padding: 0px;
+}
+
+#ScatterPlot3D
+{
+  display:block;
+  float:right;
+}
+</style>
+
+
+
+<!-- raf.js -->
+
+<script src="http://dexvis.com/three/latest/build/raf.js"></script>
+</head>
+
+
+<body>
+<table><tr><td id='parCoord'></td><td id='scatter3d'></td></tr></table>
+<script type="x-shader/x-vertex" id="vertexshader">
+uniform float amplitude;
+attribute float size;
+attribute vec3 customColor;
+
+varying vec3 vColor;
+
+
+void main() {
+  vColor = customColor;
+  vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
+
+  //gl_PointSize = size;
+  gl_PointSize = size * ( 300.0 / length( mvPosition.xyz ) );
+  gl_Position = projectionMatrix * mvPosition;
+}
+
+</script>
+
+
+
+<script type="x-shader/x-fragment" id="fragmentshader">
+uniform vec3 color;
+uniform sampler2D texture;
+
+varying vec3 vColor;
+
+void main() {
+  gl_FragColor = vec4( color * vColor, 1.0 );
+  gl_FragColor = gl_FragColor * texture2D( texture, gl_PointCoord );
+}
+
+</script>
+
+<script>
+function lcg_randu(seed) {
+  return (65539 /*a*/ * seed + 0 /*c*/) % 0x80000000;
+}
+
+var data = []
+var seed = 123456789;
+var min = -10*1024;
+var max = 10*1024;
+for(var i = 0; i < 2*1024; i++) {
+  pt = []
+  for(var j = 0; j < 3; j++) {
+    seed = lcg_randu(seed);
+    var num = (seed/0x80000000) * (max - min);
+    pt.push(num + min);
+    //pt.push(Math.random()*(max-min) + min);
+  }
+  data.push(pt);
+}
+
+var scatterplot = new ScatterPlot3D({
+  'parent' : document.getElementById('scatter3d'),
+  'csv'    : {
+    'header' : ['X', 'Y', 'Z'],
+    'data' : data,
+   }, 
+  'height' : 650,
+  'width'  : 650
+});
+
+scatterplot.render();
+</script>
+
+</body>
+</html>

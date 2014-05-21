@@ -1,0 +1,119 @@
+<html>
+<head>
+
+<script src="../../js/d3.min.js"></script>
+<script src="../../js/threejs.min.js"></script>
+<script src="../../js/threejs.dex.js"></script>
+<script src="../../js/threejs.ScatterPlot3D.js"></script>
+
+<style type="text/css">
+body {
+  margin: 0px;
+  padding: 0px;
+}
+
+#ScatterPlot3D
+{
+  display:block;
+  float:right;
+  background-color:red;
+  background:blue;
+}
+</style>
+
+
+
+<!-- raf.js -->
+
+<script src="http://dexvis.com/three/latest/build/raf.js"></script>
+</head>
+
+
+<body>
+<table>
+  <tr><td id='scatter3d-randu'></td></tr>
+</table>
+<script type="x-shader/x-vertex" id="vertexshader">
+uniform float amplitude;
+attribute float size;
+attribute vec3 customColor;
+
+varying vec3 vColor;
+
+
+void main() {
+  vColor = customColor;
+  vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
+
+  //gl_PointSize = size;
+  gl_PointSize = size * ( 300.0 / length( mvPosition.xyz ) );
+  gl_Position = projectionMatrix * mvPosition;
+}
+
+</script>
+
+
+
+<script type="x-shader/x-fragment" id="fragmentshader">
+uniform vec3 color;
+uniform sampler2D texture;
+
+varying vec3 vColor;
+
+void main() {
+  gl_FragColor = vec4( color * vColor, 1.0 );
+  gl_FragColor = gl_FragColor * texture2D( texture, gl_PointCoord );
+}
+
+</script>
+
+<script>
+
+// Generate an LCD function with the given configuration
+function make_lcg(m, a, c, seed) {
+  var last = seed;
+  return function() {
+    var next = (a * last + c) % m;
+    last = next;
+    return next / m;
+  }
+}
+var data = []
+var now = (new Date()).getTime();
+
+var randu = make_lcg(0x80000000, 65539, 0, 1);
+var drand48 = make_lcg(0x1000000000000, 25214903917, 11, now);
+var super_duper = make_lcg(0x100000000, 69069, 1, now);
+var simscript = make_lcg(0x80000000 - 1, 630360016, 0, now);
+
+
+function test_lcg(lcg, data) {
+  var min = -10*1024;
+  var max = 10*1024;
+  for(var i = 0; i < 124; i++) {
+    pt = []
+    for(var j = 0; j < 3; j++) {
+      var num = randu();
+      console.log(num);
+      pt.push(num);
+    }
+    data.push(pt);
+  }
+}
+
+test_lcg(randu, data);
+
+new ScatterPlot3D({
+  'parent' : document.getElementById('scatter3d-randu'),
+  'csv'    : {
+    'header' : ['X', 'Y', 'Z'],
+    'data' : data,
+   }, 
+  'height' : 650,
+  'width'  : 650
+}).render();
+
+</script>
+
+</body>
+</html>

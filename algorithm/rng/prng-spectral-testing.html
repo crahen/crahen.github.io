@@ -1,0 +1,82 @@
+<html>
+<head>
+<script src="../../js/pre3d.js"></script>
+<script src="../../js/pre3d_shape_utils.js"></script>
+<script src="../../js/pre3d_demo_utils.js"></script>
+<script>
+window.addEventListener('load', function() {
+  var black = new Pre3d.RGBA(0, 0, 0, 1);
+  var white = new Pre3d.RGBA(1, 1, 1, 1);
+
+  var screen_canvas = document.getElementById('canvas');
+  var renderer = new Pre3d.Renderer(screen_canvas);
+
+  var cubes = [ ];
+  var size = 10;
+  for (var i = 0; i < size; ++i) {
+    for (var j = 0; j < size; ++j) {
+      for (var k = 0; k < size; ++k) {
+          var cube = Pre3d.ShapeUtils.makeCube(0.5);
+          var transform = new Pre3d.Transform();
+          transform.translate(i - 5, j - 5, k - 5);
+          cubes.push({
+            shape: cube,
+            color: new Pre3d.RGBA(Math.random(), Math.random(), Math.random(), 0.2),
+            trans: transform});
+      }
+    }
+  }
+
+  var num_cubes = cubes.length;
+  var cur_white = false;  // Default to black background.
+
+  function draw() {
+    for (var i = 0; i < num_cubes; ++i) {
+      var cube = cubes[i];
+      renderer.fill_rgba = cube.color;
+      renderer.transform = cube.trans;
+      renderer.bufferShape(cube.shape);
+    }
+
+    if (cur_white) {
+      renderer.ctx.setFillColor(1, 1, 1, 1);
+    } else {
+      renderer.ctx.setFillColor(0, 0, 0, 1);
+    }
+    renderer.drawBackground();
+
+    renderer.drawBuffer();
+    renderer.emptyBuffer();
+  }
+
+  renderer.camera.focal_length = 2.5;
+  // Have the engine handle mouse / camera movement for us.
+  DemoUtils.autoCamera(renderer, 0, 0, -30, 0.40, -1.06, 0, draw);
+
+  document.addEventListener('keydown', function(e) {
+    if (e.keyCode != 84)  // t
+      return;
+
+    if (cur_white) {
+      document.body.className = "black";
+    } else {
+      document.body.className = "white";
+    }
+    cur_white = !cur_white;
+    draw();
+  }, false);
+
+  draw();
+}, false);
+</script>
+</head>
+<body>
+
+<div class="centeredDiv">
+<canvas id="canvas" width="800" height="600">
+  Sorry, this demo requires a web browser which supports HTML5 canvas!
+</canvas>
+</div>
+
+</body>
+</html>
