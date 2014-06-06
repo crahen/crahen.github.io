@@ -266,7 +266,8 @@ body {
 <h2>Overview</h2>
 
 A linear congruiential generator, or <i>LCG</i>, is one of the oldest and simplest algorithms we have for generating a series of seemingly unpredictable random numbers. 
-
+<p>
+<hr style="margin-top:35px; margin-bottom:35px;">
 <h3>EQUATION</h3>
 LCGs all take the form,<p>
 <div class="formula">
@@ -356,13 +357,13 @@ Using that RNG to build a sequence of random numbers looks like this:
 </table>
 </center>
 
-
-VCRT crt\src\rand.c:
+<h3>MICROSOFT C-RUNTIME</h3>
+VCRT <b>crt\src\rand.c</b>:
 <pre>
 return( ((ptd->_holdrand = ptd->_holdrand * 214013L  2531011L) >> 16) & 0x7fff );
 </pre>
 
-VCRT msvcrt.dll:
+VCRT <b>msvcrt.dll</b>:
 <pre>
 mov     ecx, [eax+14h]
 imul    ecx, 343FDh
@@ -385,45 +386,45 @@ and     eax, 7FFFh
 <tr><td style="padding-right:50px;">
 <table id="full-cycle" bordercolor="#EEEEEE">
 </table>
-<center><span><b>(32-bit binary values, regenerated each page load)</b></span></center>
 </td><td valign="top">
-<ul>
-  <li></li>
-  <li></li>
-  <li></li>
-</ul>
-
+TODO
 <a href="http://en.wikipedia.org/wiki/Full_cycle">full cycle</a>
-</td></tr>
-</table>
-
-<pre>
-mov     ecx, [eax+14h]
-imul    ecx, 343FDh
-add     ecx, 269EC3h
-mov     [eax+14h], ecx
-mov     eax, ecx
-shr     eax, 10h
-and     eax, 7FFFh
-</pre>
+</td></tr></table>
 
 
 <h2>Period</h2>
+
+TODO
+<table cellspacing="10">
+<tr><td style="padding-right:50px;">
+<a href="http://www.cigital.com/papers/download/developer_gambling.php">http://www.cigital.com/papers/download/developer_gambling.php</a>
+</td><td valign="top">
 <img src="cards.png">
+</td></tr></table>
 
 <h2>Predictability</h2>
 
-<h2>Notes</h2>
+<table cellspacing="10">
+<tr><td style="padding-right:50px;">
+TODO
+</td><td valign="top">
+  <a href="http://pdf.aminer.org/000/211/835/secret_linear_congruential_generators_are_not_cryptographically_secure.pdf">How To Predict Congruential Generators</a>
+</td></tr></table>
+
+
+<hr style="margin-top:35px; margin-bottom:35px;">
+
+<h3>Author</h3>
+Eric Crahen
+
 <h3>References</h3>
 <ul>
   <li><a href="http://random.mat.sbg.ac.at/">http://random.mat.sbg.ac.at/</a></li>
   <li><a href="http://www.iro.umontreal.ca/~simardr/testu01/tu01.html">http://www.iro.umontreal.ca/~simardr/testu01/tu01.html</a></li>
   <li><a href="http://en.wikipedia.org/wiki/Full_cycle">Full Cycle</a></li>
   <li><a href="http://www.cigital.com/papers/download/developer_gambling.php">http://www.cigital.com/papers/download/developer_gambling.php</a></li>
+  <li><a href="http://pdf.aminer.org/000/211/835/secret_linear_congruential_generators_are_not_cryptographically_secure.pdf">How To Predict Congruential Generators</a></li>
 </ul>
-
-<h3>Author</h3>
-Eric Crahen
 
 </body>
 </html>
