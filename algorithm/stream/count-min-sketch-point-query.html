@@ -26,8 +26,8 @@
     // Plot Factory
     var createScatterPlot = function(plot, id) {
       var controls = [
-        { name: 'Accuracy', min: 0, max: 50, scale: 1000, val: plot['accuracy'] || 0.001 }, 
-        { name: 'Confidence', min: 0, max: 1000, scale: 1000, val: plot['confidence'] || 0.99 }, 
+        { name: 'Epsilon', min: 0, max: 50, scale: 1000, val: plot['epsilon'] || 0.001 }, 
+        { name: 'Delta', min: 0, max: 1000, scale: 1000, val: plot['delta'] || 0.99 }, 
         { name: 'Seed', min: 0, max: 10000, scale: 1, val: Math.floor(Math.random() * (1000)) }, 
         { name: 'Cardinality', min: 0, max: 2000000, scale: 1, val: 1000000 }, 
         { name: 'Volume', min: 0, max: 50000, scale: 1, val: 4000 },
@@ -102,7 +102,7 @@
         plot['series'][1]['data'] = [];
         plot['population'] = 0;
         plot['success'] = 0;
-        plot['sketch'] = new CMSketch(plot['accuracy'], plot['confidence'], plot['seed']);
+        plot['sketch'] = new CMSketch(plot['epsilon'], plot['delta'], plot['seed']);
         plot['space'] = plot['sketch'].space();
         plot['depth'] = plot['sketch'].depth();
         plot['width'] = plot['sketch'].width();
@@ -155,7 +155,7 @@
         success.val(suc);
         population.val(pop);
         plot['graph'].update();
-        if (suc < plot['confidence']) {
+        if (suc < plot['delta']) {
           success.css('color', 'red');
           success.css('font-weight', 'boldest');
         } else {
@@ -200,10 +200,10 @@
           // one step'th the datapoints to keep the svg simple.
           var pt = {x: plot['data'][i], y: plot['estimate'][i]};
           if (typeof(pt.x) == 'undefined' || typeof(pt.y) == 'undefined') { continue; }
-          if(pt.y > (pt.x + plot['accuracy']*pt.x)) {
+          if(pt.y > (pt.x + plot['epsilon']*pt.x)) {
             errors += 1;
           }
-          if(pt.y <= (pt.x + plot['accuracy']*pt.x)) {
+          if(pt.y <= (pt.x + plot['epsilon']*pt.x)) {
             if (i % step == 0) { plot['series'][0]['data'].push(pt); }
           } else {
             if (i % step == 0) { plot['series'][1]['data'].push(pt); }
@@ -231,11 +231,11 @@
       estimate: [],
       series: [
         { 
-          name: 'Estimate Within Accuracy Range of True Value',
+          name: 'Estimate Within Epsilon Range of True Value',
           color: '#6699cc',
           data: [],
         }, {
-          name: 'Estimate Outside Accuracy Range of True Value',
+          name: 'Estimate Outside Epsilon Range of True Value',
           color: '#ff2233',
           data: [],
         }
@@ -307,7 +307,7 @@ Cormode also proved the sketch provides the guarantee that with probability 1 - 
   <li>f &apos;<sub>(x)</sub> &lt;= f<sub>(x)</sub> + &#949;&#8741;f&#8741;</li>
   <li>estimate &lt;= truth + error</li>
 </ul>
-This means that amount of error in the estimate is proportional to the total aggregate number of occurences seen, and to the accuracy. This also means significantly larger truth values can dwarf smaller the error term producing more accurate estimates for items with the largest counts.
+This means that amount of error in the estimate is proportional to the total aggregate number of occurences seen, and to the epsilon. This also means significantly larger truth values can dwarf smaller the error term producing more accurate estimates for items with the largest counts.
 <p>
 Finally, the theory provides a few formulas for determining the dimensions of the array used to store estimates.
 <ul style="list-style: none;">
@@ -461,24 +461,24 @@ When choosing a configuration, you are often trying to minimize the error term, 
 </ul>
 Alternatively, you can try to reduce the frequency error and increase the chance of success, (1 - &#948;). You may trade some level of error rate in the estimate for a savings in space:
 <ul style="list-style: none;">
-<li style="margin-top:15px;margin-right:150px;"><b>Confidence:</b> The theory states that errors in estimation occur with probability of delta (<em>&#948;</em>). This makes the probability of success (<em>1.0 - &#948;</em>). Increasing this number can produce sketch configurations with reduced error rates, but that will require more memory.</li>
+<li style="margin-top:15px;margin-right:150px;"><b>Delta:</b> The theory states that errors in estimation occur with probability of delta (<em>&#948;</em>). This makes the probability of success (<em>1.0 - &#948;</em>). Increasing this number can produce sketch configurations with reduced error rates, but that will require more memory.</li>
 </ul>
 Universal hashes?
 <ul style="list-style: none;">
 <li style="margin-top:15px;margin-right:150px;"><b>Seed:</b> The seed parameter controls the distribution of universal hash functions that are used by the sketch.</li>
 </ul>
-A good rule of thumb for finding a starting configuration is to try an accuracy with as many significant digits as you have digits in your expected volume (e.g. given an expected volume of 5000 a good starting point for accuracy might be .0001).
+A good rule of thumb for finding a starting configuration is to try an epsilon with as many significant digits as you have digits in your expected volume (e.g. given an expected volume of 5000 a good starting point for epsilon might be .0001).
 <p>
 <br>
 <h1>Demonstration</h1>
-The following demonstration allows you to visualize how the estimated and true values produced by these functions relate to one another. In this scenario, a set of random counts are generated and assigned to each key in a set of keys. Points are colored red to show when they are outside a factor of <em>accuracy</em> of the true value. For reference, a perfect estimate would look like a diagonal line, from the bottom left to the top right and would contain no red.
+The following demonstration allows you to visualize how the estimated and true values produced by these functions relate to one another. In this scenario, a set of random counts are generated and assigned to each key in a set of keys. Points are colored red to show when they are outside a factor of <em>epsilon</em> of the true value. For reference, a perfect estimate would look like a diagonal line, from the bottom left to the top right and would contain no red.
 <p>
 <h2>Observe</h2>
 
 <ul style="list-style: none;">
-<li style="margin-top:15px;margin-right:150px;"><b>Accuracy:</b> Trading space for an error factor is what selecting an accuray allows for control over. Try changing the accuracy and notice the impact on the storage width.</li>
+<li style="margin-top:15px;margin-right:150px;"><b>Epsilon:</b> Trading space for an error factor is what selecting an accuray allows for control over. Try changing the epsilon and notice the impact on the storage width.</li>
 
-<li style="margin-top:15px;margin-right:150px;"><b>Confidence:</b> Trading space for an error rate is what selecting n confidence allows for control over. Try changing the confidence and notice the impact on the storage depth.</li>
+<li style="margin-top:15px;margin-right:150px;"><b>Delta:</b> Trading space for an error rate is what selecting n delta allows for control over. Try changing the delta and notice the impact on the storage depth.</li>
 
 <li style="margin-top:15px;margin-right:150px;"><b>Cardinality:</b> Counting with limited space is the primitive this stream summary ultimately provides. Configuring the cardinality allows for control over the potential space savings. Try changing the cardinality and notice the impact on the space savings over keeping a counter for every possible item.</li>
 
@@ -507,7 +507,7 @@ The width and depth of the array used to store the occurence estimates is given 
   <li>space = O((1 / &#949;) * ln(1 / &#948;))</li>
 </ul>
 <p>
-Generally speaking, arrays will be wider than they are deep in most practical configurations (e.g. accuracy = 0.0001, confidence = 0.95 :: width = 27183, depth = 3).
+Generally speaking, arrays will be wider than they are deep in most practical configurations (e.g. epsilon = 0.0001, delta = 0.95 :: width = 27183, depth = 3).
 <p>
 <br>
 

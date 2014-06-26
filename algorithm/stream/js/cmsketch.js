@@ -1,9 +1,9 @@
 
-function CMSketch(accuracy, confidence, seed) {
+function CMSketch(epsilon, delta, seed) {
 
   // Create storage for counts
-  var depth = Math.ceil(Math.log(1 / (1.0 - confidence)));
-  var width = Math.ceil(Math.E / accuracy);
+  var depth = Math.ceil(Math.log(1 / delta));
+  var width = Math.ceil(Math.E / epsilon);
   var counts = new Array(depth);
   for (var i = 0; i < depth; ++i) {
     counts[i] = new Array(width);
@@ -63,14 +63,14 @@ function CMSketch(accuracy, confidence, seed) {
     return depth;
   }
 
-  // Get the accuracy.
-  this.accuracy = function() {
-    return accuracy;
+  // Get the epsilon.
+  this.epsilon = function() {
+    return epsilon;
   }
 
-  // Get the confidence.
-  this.confidence = function() {
-    return confidence;
+  // Get the epsilon.
+  this.epsilon = function() {
+    return epsilon;
   }
 
 }
