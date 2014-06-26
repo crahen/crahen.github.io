@@ -26,7 +26,7 @@
     // Plot Factory
     var createScatterPlot = function(plot, id) {
       var controls = [
-        { name: 'Epsilon', min: 0, max: 50, scale: 1000, val: plot['epsilon'] || 0.001 }, 
+        { name: 'Epsilon', min: 0, max: 100, scale: 10000, val: plot['epsilon'] || 0.0001 }, 
         { name: 'Delta', min: 0, max: 1000, scale: 1000, val: plot['delta'] || 0.99 }, 
         { name: 'Seed', min: 0, max: 10000, scale: 1, val: Math.floor(Math.random() * (1000)) }, 
         { name: 'Cardinality', min: 0, max: 2000000, scale: 1, val: 1000000 }, 
@@ -111,7 +111,7 @@
         width.val(plot['width']);
         savings.val('');
         plot['savings'] = null;
-        animate(plot, 10000);
+        animate(plot);
       }
       reset.click(plot['reset']);
       var widget = $('<div style="float:left; padding:5px;"/>').appendTo(id);
@@ -150,8 +150,8 @@
       });
       plot['name'] = name;
       // Allow visualization to update success and population.
-      plot.update = function(n, suc, pop) {
-        savings.val(((8 * plot['cardinality']) - plot['space'])/  1024);
+      plot.paint = function(n, suc, pop) {
+        savings.val(((/* sizeof(long) */8 * plot['cardinality']) - plot['space'])/  1024); 
         success.val(suc);
         population.val(pop);
         plot['graph'].update();
@@ -168,22 +168,22 @@
       return plot;
     };
 
-    // Animate 
-    var animate = function(plot, delay, step, n) {
-    // Reset whenever animate gets explicitly called.
-      if ('undefined' == typeof(n)) {
+    // Animate adding data to the plot. 
+    var animate = function(plot, delay, start, step) {
+      if ('undefined' == typeof(start)) {
         clearTimeout(plot['timeout']);
-        n = 0;
-        // Limit the complexity of the actual visualization
-        step = Math.ceil(plot['volume'] / 250);
+        start = 0;
       }
-      if (n > plot['volume']) {
+      if ('undefined' == typeof(step)) {
+        step = Math.ceil(plot['volume'] / 75);
+      }
+      if (start > plot['volume']) {
         return;
       }
-      for(var start = n; n < start + step; n = n + 1) {
-        // Generate new actual and estimate values
+      // Generate data from [0, volume] step items at a time.
+      for(var n = start; n < start + step; n = n + 1) {
         var key = 'k' + n;
-        var val = (n+1)*n;
+        var val = n;
         var est = plot['sketch'].update(key, val);
         plot['data'].push(val);
         plot['estimate'].push(est);
@@ -191,37 +191,37 @@
           plot['data'].shift();
           plot['estimate'].shift();
         }
-        // Update the state
-        plot['series'][0]['data'] = [];
-        plot['series'][1]['data'] = [];
-        var errors = 0;
-        for (var i = 0; i < n; i++) {
-          // Look at all of the data to determine the actual error, but only draw
-          // one step'th the datapoints to keep the svg simple.
-          var pt = {x: plot['data'][i], y: plot['estimate'][i]};
-          if (typeof(pt.x) == 'undefined' || typeof(pt.y) == 'undefined') { continue; }
-          if(pt.y > (pt.x + plot['epsilon']*pt.x)) {
-            errors += 1;
-          }
-          if(pt.y <= (pt.x + plot['epsilon']*pt.x)) {
-            if (i % step == 0) { plot['series'][0]['data'].push(pt); }
-          } else {
-            if (i % step == 0) { plot['series'][1]['data'].push(pt); }
-          }
-        }
       }
-      plot['series'][0]['data'].sort(sortByX);
-      plot['series'][1]['data'].sort(sortByX);
+      // Update the series used to draw the graph
+      var errors = 0;
+      for (var i = start; i < start+step; i++) {
+        // Look at all of the data to determine the actual error, but only draw
+        // one step'th the datapoints to keep the svg simple.
+        var pt = {x: plot['data'][i], y: plot['estimate'][i]};
+        if (typeof(pt.x) == 'undefined' || typeof(pt.y) == 'undefined') { break; }
+        if(pt.y > (pt.x + plot['epsilon']*pt.x)) {
+          errors += 1;
+        }
+        if(pt.y <= (pt.x + plot['epsilon']*pt.x)) {
+          plot['graph'].series[0]['data'].push(pt);
+        } else {
+          plot['graph'].series[1]['data'].push(pt);
+        }
+        break;
+      }
+      plot['graph'].series[0]['data'].sort(sortByX);
+      plot['graph'].series[1]['data'].sort(sortByX);
+
       // Update the output variables
-      plot['population'] = n;
+      plot['population'] = start + step;
       plot['success'] = 1;
       if (errors > 0) {
-        plot['success'] = 1 - (errors / n);
+        plot['success'] = 1 - (errors / plot['population']);
       }
       // Update the visualization
-      plot.update(n, plot['success'], plot['population']);
+      plot.paint(n, plot['success'], plot['population']);
       plot['timeout'] = setTimeout(function() {
-        animate(plot, delay, step, n);
+        animate(plot, delay, start + step, step);
       }, step / delay);
     };
 
@@ -261,10 +261,11 @@
 <h1>Count-Min Sketching, Configuration &amp; Point-Queries</h1>
 A probablistic counting algorithm, implementation, configuration, and application notes.
 <p>
+<span style="color:red;"><em>DRAFT</em></span>
+<p>
 <br>
 </div>
 <h1>Introduction</h1>
-<em>DRAFT</em>
 Sketching algorithms like this one are the heart of many stream processing applications for good reason. Sketches can produce estimates of configurable quality, require requires sub-linear space and often do not need to store identifiers. This makes them an attractive option for counting
 a large number of distinct items with relatively little space. 
 <p>
@@ -438,10 +439,11 @@ Trials are repeated until enough are completed to achieve the Pr(desired), this 
 </td></tr>
 </table>
 
-
-<h2>Querying a Sketch</h2>
+<p>
+<br>
+<h2>Querying</h2>
 <h3>Point-Query</h3>
-Looking up the value of a counter in the sketch is a type of query called a point-query. This proceedure is very similar to the increment proceedure and also requires O(ln(1 / &#948;)) time.
+Looking up the value of a counter in the sketch is the simplest type of query called a point-query. This proceedure is very similar to the increment proceedure and also requires O(ln(1 / &#948;)) time.
 <p>Set your initial result to <em>&infin;</em>, then for each level of depth, <em>d</em> in [0, <em>depth</em>):
 <ol>
 <li style="margin-top:15px;margin-right:150px;">Apply the hash <b>h<sub>d</sub></b> to the value of <em>x</em>, modding it with the <em>width</em> to generate a column number. col = <b>h<sub>d</sub></b>(<em>x</em>) % <em>width</em>.</li>
@@ -452,14 +454,32 @@ Looking up the value of a counter in the sketch is a type of query called a poin
 
 <p>
 <br>
+<h2>Complexity</h2>
+<h3>Space</h3>
+The width and depth of the array used to store the occurence estimates is given by:
+<ul style="list-style: none;">
+</ul>
+<ul style="list-style: none;">
+  <li>Space Used = O((1 / &#949;) * ln(1 / &#948;))</li>
+</ul>
+<p>
+Generally speaking, arrays will be wider than they are deep in most practical configurations (e.g. epsilon = 0.0001, delta = 0.95 :: width = 27183, depth = 3).
 
+<p>
+<br>
+<h3>Time</h3>
+During reads and writes, the depth of the array dictates the number of hashes that are ultimately performed.  
+<ul style="list-style: none;">
+<li>Time Needed = O(ln(1 / &#948;))</li>
+</ul>
+<p>
 <h2>Configuration</h2>
 When choosing a configuration, you are often trying to minimize the error term, &#949;&#8741;f&#8741;, of the estimate:
 <ul style="list-style: none;">
 <li style="margin-top:15px;margin-right:150px;"><b>Epsilon:</b> Acceptable errors in estimation fall within a range which is a factor of &#949;. Smaller values of &#949; should produce sketch configurations that provide estimates closer to the true values. However, this will increase the space required by the sketch.</li>
 <li style="margin-top:15px;margin-right:150px;"><b>Volume:</b> Error in estimation is also proportional to the total number of distinct items counted. A factor in the error term, &#8741;f&#8741;,  is a summation of total number of occurences of each distinct item. Another way to reduce the error term is to reduce &#8741;f&#8741; by counting fewer things.</li>
 </ul>
-Alternatively, you can try to reduce the frequency error and increase the chance of success, (1 - &#948;). You may trade some level of error rate in the estimate for a savings in space:
+Alternatively, you can try to reduce the frequency error and increase the chance of success, (1.0 - &#948;). You may trade some level of error rate in the estimate for a savings in space:
 <ul style="list-style: none;">
 <li style="margin-top:15px;margin-right:150px;"><b>Delta:</b> The theory states that errors in estimation occur with probability of delta (<em>&#948;</em>). This makes the probability of success (<em>1.0 - &#948;</em>). Increasing this number can produce sketch configurations with reduced error rates, but that will require more memory.</li>
 </ul>
@@ -468,28 +488,17 @@ Universal hashes?
 <li style="margin-top:15px;margin-right:150px;"><b>Seed:</b> The seed parameter controls the distribution of universal hash functions that are used by the sketch.</li>
 </ul>
 A good rule of thumb for finding a starting configuration is to try an epsilon with as many significant digits as you have digits in your expected volume (e.g. given an expected volume of 5000 a good starting point for epsilon might be .0001).
+
 <p>
 <br>
-<h1>Demonstration</h1>
-The following demonstration allows you to visualize how the estimated and true values produced by these functions relate to one another. In this scenario, a set of random counts are generated and assigned to each key in a set of keys. Points are colored red to show when they are outside a factor of <em>epsilon</em> of the true value. For reference, a perfect estimate would look like a diagonal line, from the bottom left to the top right and would contain no red.
+<h2>Calculator</h2>
+The following calculator allows you to visualize how the estimated and true values produced by these functions relate to one another for various configurations. In this scenario, a set of random counts are generated and assigned to each key in a set of keys. Points are colored red to show when they are outside a factor of <em>epsilon</em> of the true value. For reference, a perfect estimate would look like a diagonal line, from the bottom left to the top right and would contain no red.
 <p>
-<h2>Observe</h2>
 
-<ul style="list-style: none;">
-<li style="margin-top:15px;margin-right:150px;"><b>Epsilon:</b> Trading space for an error factor is what selecting an accuray allows for control over. Try changing the epsilon and notice the impact on the storage width.</li>
-
-<li style="margin-top:15px;margin-right:150px;"><b>Delta:</b> Trading space for an error rate is what selecting n delta allows for control over. Try changing the delta and notice the impact on the storage depth.</li>
-
-<li style="margin-top:15px;margin-right:150px;"><b>Cardinality:</b> Counting with limited space is the primitive this stream summary ultimately provides. Configuring the cardinality allows for control over the potential space savings. Try changing the cardinality and notice the impact on the space savings over keeping a counter for every possible item.</li>
-
-<li style="margin-top:15px;margin-right:150px;"><b>Volume:</b> The error term in our estimate is proportional to the volume, or number of things counted. Try increasing the volume and notice the impact on the distribution of error.</li>
-
-<li style="margin-top:15px;margin-right:150px;"><b>Seed:</b> Try changing the seed and see if you notice any impact, you should see different distributions generate that follow the same general trends.</li>
-</ul>
 <p>
 <br>
   <center>
-    <h3>Truth vs. Estimate</h3>
+    <h3>Truth (x-axis) vs. Estimate (y-axis)</h3>
     <div id="chart" class="ui-widget"/>
   </center>
   <center>
@@ -497,29 +506,15 @@ The following demonstration allows you to visualize how the estimated and true v
  </center>
 
 <p>
-
-<h2>Implementation</h2>
-<h3>Space</h3>
-The width and depth of the array used to store the occurence estimates is given by:
-<ul style="list-style: none;">
-</ul>
-<ul style="list-style: none;">
-  <li>space = O((1 / &#949;) * ln(1 / &#948;))</li>
-</ul>
-<p>
-Generally speaking, arrays will be wider than they are deep in most practical configurations (e.g. epsilon = 0.0001, delta = 0.95 :: width = 27183, depth = 3).
-<p>
 <br>
-
-<h3>Time</h3>
-During reads and writes, the depth of the array dictates the number of hashes that are ultimately performed.  
+<h3>Saturation</h3>
+A sketch is said to be <i>saturated</i> when it's <i>filled</i> with data, and adding additional data to the sketch at this point has a high likihood introducing error. Recall the error model for the sketch, it's proportional to the volume and cardinality of the data added to the sketch, &#8741;f&#8741; in the expression below. 
 <ul style="list-style: none;">
-<li>O(ln(1 / &#948;)): Time Needed</li>
+  <li>f &apos;<sub>(x)</sub> &lt;= f<sub>(x)</sub> + &#949;&#8741;f&#8741;</li>
 </ul>
-<br>
-
+Keeping track of the count of the number of items added to a sketch is allows you to track volume, and assuming the cardinality of the items your sketch sees stays within your estimated limit, this gives you one way to estimate how saturated a sketch is. Once you know your sketch is saturated you should stop adding data to it, and start using a new sketch. Alternatively, you might accept the error and log an error or emit some metric.
 <p>
-<p>
+For more on embracing probability and error, see <a href="count-min-sketch-saturation-heavyhitters.html">Count-Min Sketching, Saturation &amp; Heavy-Hitters</a>
 <hr style="margin-top:35px; margin-bottom:35px;">
 
 <h2>Author</h2>
@@ -528,8 +523,7 @@ Eric Crahen
 <ol>
 <li><a href="dimacs.rutgers.edu/~graham/pubs/papers/cm-full.pdf">"G. Cormode and S. Muthukrisnan, An improved data stream summary: the count-min sketch and its applications", Journal of Algorithms, 2005, pp. 58-75.</a></li>
 <li><a href="http://www.cs.yale.edu/homes/el327/papers/simpleMatrixSketching.pdf">"Simple and Deterministic Matrix Sketching", E. Liberty.</a></li>
-<li><a href="http://www.youtube.com/watch?v=947gWqwkhu0"><h3>Google Tech Talk: The Bloom Filter</h3></a></li>
-<li><a href="js/cmsketch.js"><h3>JavaScript Implementation: cmsketch.js</h3></a></li>
+<li><a href="http://www.youtube.com/watch?v=947gWqwkhu0">Google Tech Talk: The Bloom Filter</a></li>
 </ol>
 
 <p>
