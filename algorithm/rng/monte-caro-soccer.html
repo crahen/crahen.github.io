@@ -1,0 +1,556 @@
+<html>
+<head>
+<title>Monte Carlo Soccer Simulation</title>
+<script src="js/d3.min.js"></script>
+<script src="js/json2.js"></script>
+<script src="js/jquery.min.js"></script>
+<script src="js/simulation.js"></script>
+<style type="text/css">
+.xaxis path,
+.xaxis line {
+  fill: none;
+  stroke: black;
+  shape-rendering: crispEdges;
+}
+.xaxis text {
+  font-family: sans-serif;
+  font-size: 11px;
+}
+.yaxis path,
+.yaxis line {
+  fill: none;
+  stroke: black;
+  shape-rendering: crispEdges;
+}
+.yaxis text {
+  font-family: sans-serif;
+  font-size: 11px;
+}
+</style>
+
+<script>
+window.onload = function() {
+
+  // FIELD DISPLAY
+  var field = document.getElementById("field");
+  var fieldBorder = 18;
+
+  // Paint the field on the HTML canvas given some state
+  var paintField = function(state) {
+
+    // Resolve a few HTML elements involved in the painting.
+    var blue_score = document.getElementById("blue-score");
+    var red_score = document.getElementById("red-score");
+    var blue_fouls = document.getElementById("blue-fouls");
+    var red_fouls = document.getElementById("red-fouls");
+    var blue_red = document.getElementById("blue-red");
+    var red_red = document.getElementById("red-red");
+    var blue_yellow = document.getElementById("blue-yellow");
+    var red_yellow = document.getElementById("red-yellow");
+  
+    var match = document.getElementById("match");
+
+    var team0 = document.getElementById("team0");
+    var draw = document.getElementById("draw");
+    var team1 = document.getElementById("team1");
+
+
+    // Resolve the size of players and the ball.   
+    var fieldImg = document.getElementById("soccer_field.png");
+    var ballSize = 0.007 * fieldImg.width;
+    var playerSize = 0.011 * fieldImg.width;
+    var blue_ball = document.getElementById("blue-ball");
+    var red_ball = document.getElementById("red-ball");
+    var blue_ball_shadow = document.getElementById("blue-ball-shadow");
+    var red_ball_shadow = document.getElementById("red-ball-shadow");
+    return function(state) {
+      // Draw the background
+      var fieldCtx = field.getContext("2d");
+      fieldCtx.clearRect(0, 0, fieldImg.width, fieldImg.height);
+      //fieldCtx.scale(field.width/fieldImg.width, field.heightImg/field.height, 0);
+      fieldCtx.drawImage(fieldImg, 0, 0);
+      // Draw the ball
+      fieldCtx.scale(1, 1);
+      // Loop through the players, drawing them in the field.
+      for(var t = 0; t < state.team.length; t++) {
+        for(var i = 0; i < state.team[t].length; i++) {
+          // Resolve x and y relative to the defending goal.
+          var x = Math.floor((state.team[t][i].x * (field.width - 2*fieldBorder)) + fieldBorder);
+          var y = Math.floor((state.team[t][i].y * (field.height - 2*fieldBorder)) + fieldBorder);
+          // Red team on the right.
+          if(t == 1) { x = fieldImg.width - fieldBorder - x; }
+          // Paint the player.
+          fieldCtx.beginPath();
+          fieldCtx.arc(x, y, playerSize, 0, 2*Math.PI);
+          fieldCtx.fillStyle = (t == 1) ? "#0066FF" : "#FF5050";
+          fieldCtx.strokeStyle = (t == 1) ? "#0000FF" : "#FF0000";
+          fieldCtx.closePath();
+          fieldCtx.fill();
+          fieldCtx.stroke();
+          // Paint the ball near the player who has it.
+          if(t == state.controlling_team && i == state.controlling_player) {
+              var offset = playerSize+ballSize;
+              var ball_x = x + (Math.random() > 0.5 ? offset : -offset);
+              var ball_y = y + (Math.random() > 0.5 ? offset : -offset);
+              if(t == 1) { ball_x = fieldImg.width - ball_x; }
+              fieldCtx.beginPath();
+              fieldCtx.arc(ball_x, ball_y, ballSize, 0, 2*Math.PI);
+              fieldCtx.fillStyle = "#EEEEEE";
+              fieldCtx.fill();
+              fieldCtx.strokeStyle = "#FFFFFF";
+              fieldCtx.closePath();
+              fieldCtx.stroke();
+          }
+        }
+      }
+      var tostr = function(n) {
+        return ((n > 9) ? '' : '0') + n;
+      };
+      // Draw the stats
+      blue_score.innerHTML = tostr(state.goals[0]);
+      red_score.innerHTML = tostr(state.goals[1]);
+      blue_fouls.innerHTML = tostr(state.fouls[0]);
+      red_fouls.innerHTML = tostr(state.fouls[1]);
+      blue_yellow.innerHTML = tostr(state.yellow_cards[0]);
+      red_yellow.innerHTML = tostr(state.yellow_cards[1]);
+      blue_red.innerHTML = tostr(state.red_cards[0]);
+      red_red.innerHTML = tostr(state.red_cards[1]);
+      if(state['startedAt']) {
+	match.innerHTML = state.match + ' <i>(' + ((new Date().getTime() - state.startedAt)/1000) + 's)</i>';
+      }
+
+      // Move the soccer ball icon to the controlling team
+      if(state.controlling_team == 1) {
+        red_ball.style.display = 'block';
+	blue_ball.style.display = 'none';
+        red_ball_shadow.style.display = 'none';
+	blue_ball_shadow.style.display = 'block';
+      } else {
+        red_ball.style.display = 'none';
+	blue_ball.style.display = 'block';
+        red_ball_shadow.style.display = 'block';
+	blue_ball_shadow.style.display = 'none';
+      }
+    }
+  }();
+
+  // GRAPH DISPLAY
+  var paintGraphs = function(state) {
+
+    // CREATE GRAPH
+    var padding = 35;
+    var w = 400;
+    var h = 250;
+
+    // Setup a scatter plot with points that we'll move into 
+    // visibility as data changes
+    var dataset = [];
+    for(var i = 0; i < 250; i++) {
+      dataset.push({x: 0, y:0, size:0 });
+    }
+
+    var scatterplot = d3.select("#goal-scatter-plot svg").attr("width", w).attr("height", h);
+
+    var xScale = d3.scale.linear()
+                   .domain([0,d3.max(dataset, function(d) { return d.x; })])
+                   .range([padding,w-padding]);
+    var yScale = d3.scale.linear()
+                   .domain([0,d3.max(dataset, function(d) { return d.y; })])
+                   .range([h-padding, padding]);
+    var rScale = d3.scale.linear()
+                   .domain([0,d3.max(dataset, function(d) { return d.r; })])
+                   .range([.05, 30]);
+
+    var xAxis = d3.svg.axis()
+                  .scale(xScale)
+                  .orient("bottom")
+                  .ticks(5);
+    
+    var yAxis = d3.svg.axis()
+                  .scale(yScale)
+                  .orient("left")
+                  .ticks(5);
+
+    scatterplot.append("g")
+       .attr("class", "xaxis")
+       .attr("transform", "translate(0," + (h - padding) + ")")
+       .call(xAxis);
+    
+    scatterplot.append("g")
+       .attr("class", "yaxis")
+       .attr("transform", "translate(" + padding + ",0)")
+       .call(yAxis);
+    
+    scatterplot.selectAll("circle")
+        .data(dataset)
+        .enter()
+        .append("circle")
+          .attr({
+            cx: function(d) { return xScale(d.x); },
+            cy: function(d) { return yScale(d.y); },
+            r: function(d) { return rScale(d.size); },
+            fill: function(d) { return d.fill; }
+          });
+
+    // Bar chart
+    var bardataset = [];
+    for(var i = 0; i < 250; i++) {
+      bardataset.push({x: -1, value:-1 });
+    }
+
+    var barchart = d3.select("#goal-distribution-graph svg").attr("width", w).attr("height", h);
+    var barXScale = d3.scale.ordinal()
+                      .domain([0,d3.max(bardataset, function(d) { return d.x; })])
+                      .range([padding, w-padding]);
+    var barYScale = d3.scale.linear()
+                      .domain([d3.max(bardataset, function(d) { return d.value; }), 0])
+                      .range([padding, h-padding]);
+
+    var barXAxis = d3.svg.axis()
+                    .scale(barXScale)
+                    .orient("bottom")
+                    .ticks(5);
+    
+    var maxy = d3.max(bardataset, function(d) { return d.value; });
+    var barYAxis = d3.svg.axis()
+                    .scale(barYScale)
+                    .orient("left")
+                    .tickFormat(function(d) { return (maxy-d).toFixed(2).toString().substr(1, 3); });
+
+    barchart.append("g")
+       .attr("class", "xaxis")
+       .attr("transform", "translate(0," + (h - padding) + ")")
+       .call(barXAxis);
+    
+    barchart.append("g")
+       .attr("class", "yaxis")
+       .attr("transform", "translate(" + padding + ",0)")
+       .call(barYAxis);
+ 
+    var barsize = Math.min(w/(bardataset.length/2), 24) - 2;
+    barchart.selectAll("bar")
+        .data(bardataset)
+        .enter()
+        .append("rect")
+          .attr({
+            x: function(d) { return barXScale(d.x) + ((d.team == 0) ? 0 : barsize/2); },
+            y: function(d) { return d.x == -1 ? null : h-barYScale(d.value); },
+            fill: function(d) { return d.color; },
+            width: function(d) { return (barsize/4); }, 
+            height: function(d) { return d.x == -1 ? null : barYScale(d.value)-padding; }
+          });
+
+    // UPDATE GRAPHS
+    return function(state) {
+      
+      var dataset = to_outcome_probability(state);
+
+      // Scatter plot
+      var xScale = d3.scale.linear()
+                     .domain([0,d3.max(dataset, function(d) { return d.x; })])
+                     .range([padding,w-padding]);
+      var yScale = d3.scale.linear()
+                     .domain([0,d3.max(dataset, function(d) { return d.y; })])
+                     .range([h-padding, padding]);
+      var rScale = d3.scale.linear()
+                     .domain([0,d3.max(dataset, function(d) { return d.size; })])
+                     .range([5, 10]);
+
+      var xAxis = d3.svg.axis()
+                    .scale(xScale)
+                    .orient("bottom")
+                    .ticks(5);
+
+      var yAxis = d3.svg.axis()
+                    .scale(yScale)
+                    .orient("left")
+                    .ticks(5);
+
+      scatterplot.select('.xaxis').transition().duration(10).call(xAxis);
+      scatterplot.select('.yaxis').transition().duration(10).call(yAxis);
+
+      scatterplot.selectAll("circle")
+         .data(dataset)
+         .transition()
+         .duration(500)
+         .attr({
+            cx: function(d) { return xScale(d.x); },
+            cy: function(d) { return yScale(d.y); },
+            r: function(d) { return rScale(d.size); },
+            fill: function(d) { return d.color; }
+         });
+
+
+      // Bar Chart
+      var bardataset = to_outcome_distribution(state);
+
+      var barXScale = d3.scale.linear()
+                          .domain([0,d3.max(bardataset, function(d) { return d.x; })])
+			  .range([padding, w-padding], .1);
+      var barYScale = d3.scale.linear()
+                          .domain([d3.max(bardataset, function(d) { return d.value; }), 0])
+                          .range([h-padding, padding]);
+
+      var barXAxis = d3.svg.axis()
+                    .scale(barXScale)
+                    .orient("bottom")
+                    .ticks(5);
+
+      var maxy = d3.max(bardataset, function(d) { return d.value; });
+      var barYAxis = d3.svg.axis()
+                    .scale(barYScale)
+                    .orient("left")
+                    .tickFormat(function(d) { return (maxy-d).toFixed(2).toString().substr(1); });
+
+      barchart.select('.xaxis').transition().duration(10).call(barXAxis);
+      barchart.select('.yaxis').transition().duration(10).call(barYAxis);
+
+      var barsize = Math.min(w/(bardataset.length/2), 24) - 2;
+      barchart.selectAll("rect")
+         .data(bardataset)
+         .transition()
+         .duration(500)
+          .attr({
+            x: function(d) { return barXScale(d.x) + ((d.team == 0) ? 0 : barsize/2); },
+            y: function(d) { return d.x == -1 ? null : h-barYScale(d.value); },
+            fill: function(d) { return d.color; },
+            width: function(d) { return (barsize/3); },
+            height: function(d) { return d.x == -1 ? null : barYScale(d.value)-padding; }
+          });
+
+      // Update outcome prediction
+      var win = to_win_probability(state);
+      team0.innerHTML = win[0] + '%';
+      draw.innerHTML = win[1] + '%';
+      team1.innerHTML = win[2] + '%';
+    }
+
+  }();
+
+  // HELPER FUNCTIONS
+
+  // Expand an array up to x elements
+  function expand(a, x) { while(a.length <= x) { a.push(0); } }
+
+  // Convert state.history into score probabilities
+  // Returns: [ {x, y, ...}, {x, y, ...}, ... ]
+  function to_outcome_probability(state) {
+    var w = 100;
+    var v = new Array(w*w);
+    for(var i = 0; i < state.history.length; i++) {
+      var k0 = state.history[i][0];
+      var k1 = state.history[i][1];
+      if(!v[k0*w + k1]) { v[k0*w + k1] = 0; }
+      v[k0*w + k1]++;
+    }
+    var result = [];
+    for(var i = 0; i < v.length; i++) {
+      if(v[i] > 0) {
+        var x = Math.floor(i / w);
+        var y = Math.floor(i % w);
+        result.push({
+          x: x,
+          y: y,
+          size: v[i],
+          color: ((x > y) ? '#0066ff' : (x == y ? '#888888' : '#ff5050'))
+        });
+      }
+    }
+    return result;
+  }
+
+  // Convert state.history into goal distribution for each team
+  // Returns: [ [ {x, value, ...}, {x, value, ...}, ... ],
+  //            [ {x, value, ...}, {x, value, ...}, ... ] ]
+  function to_outcome_distribution(state) {
+    var v = [[], []];
+    var total = 0;
+    for(var i = 0; i < state.history.length; i++) {
+      var k0 = state.history[i][0];
+      var k1 = state.history[i][1];
+      expand(v[0], k0); v[0][k0]++;
+      expand(v[1], k1); v[1][k1]++;
+      total++;
+    }
+    var result = [[], []];
+    for(var team = 0; team < result.length; team++) {
+      for(var i = 0; i < v[team].length; i++) {
+        result[team].push({
+          team: team,
+          x: i,
+          value: v[team][i]/total,
+          color:  ((team == 0) ? '#0066ff' : '#ff5050')
+        });
+      }
+    }
+    for(var x in result[1]) { result[0].push(result[1][x]); }
+    return result[0];
+  }
+
+  // Convert state.history into outcome probabilities
+  // [ team0 %, draw %, team1 % ]
+  function to_win_probability(state) {
+    var a = 0, b = 0, c= 0, t = 0;
+    for(var i = 0; i < state.history.length; i++, t++) {
+      if(state.history[i][0] > state.history[i][1]) {
+        a++;
+      } else if(state.history[i][0] == state.history[i][1]) {
+        b++;
+      } else {
+        c++;
+      }
+    }
+    return [ Math.round((a/t)*10000)/100, Math.round((b/t)*10000)/100, Math.round((c/t)*10000)/100 ];
+  }
+
+
+  // STATE
+
+  var goalkeeper0 = null;
+  var defender0 = null;
+  var midfielder0 = null;
+  var forward0 = null;
+  $.ajax({
+    async: false,
+    cache: false,
+    url: 'http://crahen.github.io/algorithm/rng/js/team-35-goalkeeper.json',
+    success: function(player) { goalkeeper0 = JSON.parse(player); }
+  });
+  $.ajax({
+    async: false,
+    cache: false,
+    url: 'http://crahen.github.io/algorithm/rng/js/team-35-defender.json',
+    success: function(player) { defender0 = JSON.parse(player); }
+  });
+  $.ajax({
+    async: false,
+    cache: false,
+    url: 'http://crahen.github.io/algorithm/rng/js/team-35-midfielder.json',
+    success: function(player) { midfielder0 = JSON.parse(player); }
+  });
+  $.ajax({
+    async: false,
+    cache: false,
+    url: 'http://crahen.github.io/algorithm/rng/js/team-35-forward.json',
+    success: function(player) { forward0 = JSON.parse(player); }
+  });
+
+  var goalkeeper1 = null;
+  var defender1 = null;
+  var midfielder1 = null;
+  var forward1 = null;
+  $.ajax({
+    async: false,
+    cache: false,
+    url: 'http://crahen.github.io/algorithm/rng/js/team-20-goalkeeper.json',
+    success: function(player) { goalkeeper1 = JSON.parse(player); }
+  });
+  $.ajax({
+    async: false,
+    cache: false,
+    url: 'http://crahen.github.io/algorithm/rng/js/team-20-defender.json',
+    success: function(player) { defender1 = JSON.parse(player); }
+  });
+  $.ajax({
+    async: false,
+    cache: false,
+    url: 'http://crahen.github.io/algorithm/rng/js/team-20-midfielder.json',
+    success: function(player) { midfielder1 = JSON.parse(player); }
+  });
+  $.ajax({
+    async: false,
+    cache: false,
+    url: 'http://crahen.github.io/algorithm/rng/js/team-20-forward.json',
+    success: function(player) { forward1 = JSON.parse(player); }
+  });
+
+  function clone(o) {
+    var r = {};
+    for (var i in o) {
+     r[i] = o[i];
+    }
+    return r;
+  }
+
+  // Select roster
+  var state = {
+    team: [[clone(goalkeeper0), clone(defender0), clone(defender0), clone(defender0), clone(midfielder0), clone(midfielder0), clone(midfielder0), clone(forward0), clone(forward0), clone(forward0)],
+           [clone(goalkeeper1), clone(defender1), clone(defender1), clone(defender1), clone(midfielder1), clone(midfielder1), clone(midfielder1), clone(forward1), clone(forward1), clone(forward1)]]
+  };
+
+  simulate({
+    state: state,
+    initialization_callback: function(state) {
+      paintField(state);
+    },
+    update_callback: function(state) {
+      // Paint during the simulation so progress is visible
+      if(state.match % 5 == 0) {
+        paintField(state);
+        if(state.match % 100 == 0) {
+          paintGraphs(state);
+        }
+      }
+    }, 
+    finished_callback: function(state) {
+      paintField(state);
+      paintGraphs(state);
+    }
+  });
+
+}
+</script>
+</head>
+<body style="background-color: #aefdb2;">
+<div class="content" style="margin-left:150px;margin-right:150px;">
+<center>
+  <!-- Normal field is 110 x 60 yards, chose pixel sizes to maintain that ratio y =~ x * .54 -->
+  <table cellspacing="15">
+  <tr>
+  <td align="right"><img id="blue-ball" src="images/soccer_ball.png" style="display:none;"><img id="blue-ball-shadow" src="images/soccer_ball_shadow.png" style="display:none;"></td>
+<td align="center"><table><tr>
+         <td valign="center" style="color: #0066ff; font-size: 35px; font-weight: boldest; font-family: monospace;" width="5%"><center>&nbsp;<span id="team0"></span>&nbsp;</center></td>
+         <td valign="center" style="color: #888888; font-size: 35px; font-weight: boldest; font-family: monospace;" width="5%"><center>&nbsp;<span id="draw"></span>&nbsp;</center></td>
+         <td valign="middle" style="color: #ff5050; font-size: 35px; font-weight: boldest; font-family: monospace;" width="5%"><center>&nbsp;<span id="team1"></span>&nbsp;</center></td>
+</tr></table></td>
+  <td align="left"><img id="red-ball" src="images/soccer_ball.png" style="display:none;"><img id="red-ball-shadow" src="images/soccer_ball_shadow.png" style="display:none;"></td>
+  </tr>
+  <tr>
+  <td style="font-size: 18px; font-family: monospace; color:blue;">
+    <div style="margin:7px;">Score&nbsp;&nbsp; <span id="blue-score">00</span></div>
+    <div style="margin:7px;">Fouls&nbsp;&nbsp; <span id="blue-fouls">00</span></div>
+    <div style="margin:7px;">Yellow&nbsp; <span id="blue-yellow">00</span></div>
+    <div style="margin:7px;">Red&nbsp;&nbsp;&nbsp;&nbsp; <span id="blue-red">00</span></div>
+  </td>
+  <!-- canvas dim should be the same as field background -->
+  <td align="center"><canvas id="field" style="border:3px solid #00AA00;" width="475px" height="300px"></canvas></td>
+  <td style="font-size: 18px; font-family: monospace; color:red;">
+    <div style="margin:7px;">Score&nbsp;&nbsp; <span id="red-score">00</span></div>
+    <div style="margin:7px;">Fouls&nbsp;&nbsp; <span id="red-fouls">00</span></div>
+    <div style="margin:7px;">Yellow&nbsp; <span id="red-yellow">00</span></div>
+    <div style="margin:7px;">Red&nbsp;&nbsp;&nbsp;&nbsp; <span id="red-red">00</span></div>
+  </td>
+  </tr>
+  <tr>
+   <td colspan="3" align="center" style="font-size: 18px; font-family: monospace;"><center>Match: <span id="match"></span></center></td>
+  </tr>
+  <tr>
+   <td align="center" colspan="3">
+     <table>
+       <tr>
+         <td valign="middle" width="35%"><div id="goal-scatter-plot" style="margin:15px;"><svg style='width:400px;height:260px'></svg></div><center><b>Red Score vs. Blue Score</b></center></td>
+         <td></td>
+         <td valign="middle" width="35%"><div id="goal-distribution-graph" style="margin:15px;"><svg style='width:400px;height:260px'></svg></div><center><b>Goal Distribution</b></center></td>
+       </tr>
+     </table>
+   </td>
+  </tr>
+  </table>
+</center>
+</div>
+
+<img id="soccer_field.png" src="images/soccer_field_475.png" style="display:none;">
+
+
+</body>
+</html>
